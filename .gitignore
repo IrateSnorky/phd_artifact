@@ -1,0 +1,6 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Local SQLite database and write-ahead-log files
+Backend/stories.db*
