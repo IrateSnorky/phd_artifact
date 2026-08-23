@@ -92,8 +92,15 @@ export default function Stories() {
     try {
       const res = await fetch(`${API}/stories/${id}/generate`, { method: 'POST' });
       if (!res.ok) {
-        const errorData = await res.json();
-        setError(`Generation failed: ${errorData.detail || 'Unknown error'}`);
+        const errorBody = await res.text();
+        let errorMessage = errorBody.trim();
+        try {
+          const errorData = JSON.parse(errorBody);
+          errorMessage = errorData.detail || errorData.title || errorData.message || errorMessage;
+        } catch {
+          // ASP.NET minimal APIs return plain text for Results.BadRequest(string).
+        }
+        setError(`Generation failed: ${errorMessage || `Request failed (${res.status})`}`);
         return;
       }
       await fetchStories();
