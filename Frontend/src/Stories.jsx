@@ -4,11 +4,26 @@ const API = 'http://localhost:5066';
 
 export default function Stories() {
   const [stories, setStories] = useState([]);
+  const [genres, setGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [newText, setNewText] = useState('');
+  const [newGenre, setNewGenre] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
+  const [editingGenre, setEditingGenre] = useState(null);
+
+  const fetchGenres = async () => {
+    try {
+      const res = await fetch(`${API}/genres`);
+      if (!res.ok) throw new Error('Failed to load genres');
+      const data = await res.json();
+      setGenres(data);
+      if (!newGenre && data.length) setNewGenre(data[0].id);
+    } catch (err) {
+      setError(err.message || String(err));
+    }
+  };
 
   const fetchStories = async () => {
     try {
@@ -24,14 +39,15 @@ export default function Stories() {
     }
   };
 
-  useEffect(() => { fetchStories(); }, []);
+  useEffect(() => { fetchGenres(); fetchStories(); }, []);
 
   const createStory = async () => {
     if (!newText.trim()) return;
+    const payload = { storyInstructions: newText, genreId: newGenre || null };
     const res = await fetch(`${API}/stories`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyInstructions: newText })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) { setError('Create failed'); return; }
     setNewText('');
@@ -41,15 +57,17 @@ export default function Stories() {
   const startEdit = (s) => {
     setEditingId(s.storyId);
     setEditingText(s.storyInstructions || '');
+    setEditingGenre(s.genreId || '');
   };
 
-  const cancelEdit = () => { setEditingId(null); setEditingText(''); };
+  const cancelEdit = () => { setEditingId(null); setEditingText(''); setEditingGenre(null); };
 
   const saveEdit = async (id) => {
+    const payload = { storyInstructions: editingText, genreId: editingGenre || null };
     const res = await fetch(`${API}/stories/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyInstructions: editingText })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) { setError('Update failed'); return; }
     cancelEdit();
@@ -72,7 +90,16 @@ export default function Stories() {
 
       <div style={{ marginBottom: 16 }}>
         <textarea rows={3} value={newText} onChange={e => setNewText(e.target.value)} placeholder="New story instructions" style={{ width: '100%' }} />
-        <button onClick={createStory} style={{ marginTop: 8 }}>Create</button>
+        <div style={{ marginTop: 8 }}>
+          <label style={{ marginRight: 8 }}>Genre:</label>
+          <select value={newGenre} onChange={e => setNewGenre(e.target.value)}>
+            <option value="">-- none --</option>
+            {genres.map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+          <button onClick={createStory} style={{ marginLeft: 8 }}>Create</button>
+        </div>
       </div>
 
       <table border="1" cellPadding="8" style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -80,6 +107,7 @@ export default function Stories() {
           <tr>
             <th style={{ width: 80 }}>ID</th>
             <th>Instructions</th>
+            <th>Genre</th>
             <th style={{ width: 220 }}>Actions</th>
           </tr>
         </thead>
@@ -92,6 +120,18 @@ export default function Stories() {
                   <textarea rows={3} value={editingText} onChange={e => setEditingText(e.target.value)} style={{ width: '100%' }} />
                 ) : (
                   <div style={{ whiteSpace: 'pre-wrap' }}>{s.storyInstructions}</div>
+                )}
+              </td>
+              <td>
+                {editingId === s.storyId ? (
+                  <select value={editingGenre || ''} onChange={e => setEditingGenre(e.target.value)}>
+                    <option value="">-- none --</option>
+                    {genres.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div>{s.genreName || '-'}</div>
                 )}
               </td>
               <td>

@@ -22,11 +22,28 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Ensure database is created
+// Ensure database is freshly created for development and seed genres
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var dbPath = "stories.db";
+
+    // For development simplicity, if the DB exists remove it to ensure schema matches models
+    if (System.IO.File.Exists(dbPath))
+    {
+        System.IO.File.Delete(dbPath);
+    }
+
     db.Database.EnsureCreated();
+
+    if (!db.StoryGenres.Any())
+    {
+        db.StoryGenres.AddRange(new[] {
+            new StoryGenre { StoryGenreId = 1, Name = "Science Fiction" },
+            new StoryGenre { StoryGenreId = 2, Name = "Historical Fiction" }
+        });
+        db.SaveChanges();
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -59,12 +76,19 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
+// Genres endpoint
+app.MapGet("/genres", async (AppDbContext db) =>
+    await db.StoryGenres.Select(g => new { id = g.StoryGenreId, name = g.Name }).ToListAsync());
+
 // Stories endpoints
 app.MapGet("/stories", async (AppDbContext db) =>
-    await db.Stories.Select(s => new { storyId = s.StoryId, storyInstructions = s.StoryInstructions }).ToListAsync());
+    await db.Stories
+        .Select(s => new { storyId = s.StoryId, storyInstructions = s.StoryInstructions, genreId = s.GenreId, genreName = s.Genre != null ? s.Genre.Name : null })
+        .ToListAsync());
 
 app.MapPost("/stories", async (Story story, AppDbContext db) =>
 {
+    // Accept genre ID if provided
     db.Stories.Add(story);
     await db.SaveChangesAsync();
     return Results.Created($"/stories/{story.StoryId}", story);
@@ -75,6 +99,7 @@ app.MapPut("/stories/{id}", async (int id, Story input, AppDbContext db) =>
     var story = await db.Stories.FindAsync(id);
     if (story is null) return Results.NotFound();
     story.StoryInstructions = input.StoryInstructions;
+    story.GenreId = input.GenreId;
     await db.SaveChangesAsync();
     return Results.NoContent();
 });
