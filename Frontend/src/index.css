@@ -1,13 +1,13 @@
 :root {
-  --text: #ffffff;
-  --text-h: #ffffff;
-  --bg: #ff00ff;
-  --border: rgba(255,255,255,0.15);
-  --code-bg: rgba(255,255,255,0.08);
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(255, 255, 255, 0.08);
+  --text: #000000;
+  --text-h: #000000;
+  --bg: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --code-bg: rgba(255, 82, 0, 0.08);
+  --accent: #FF5200;
+  --accent-bg: rgba(255, 82, 0, 0.1);
+  --accent-border: rgba(255, 82, 0, 0.5);
+  --social-bg: rgba(255, 82, 0, 0.08);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
@@ -17,7 +17,7 @@
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
-  color-scheme: light dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -32,26 +32,27 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #ffffff;
-    --text-h: #ffffff;
-    --bg: #ff00ff;
-    --border: rgba(255,255,255,0.15);
-    --code-bg: rgba(255,255,255,0.08);
-    --accent: #aa3bff;
-    --accent-bg: rgba(170, 59, 255, 0.1);
-    --accent-border: rgba(170, 59, 255, 0.5);
-    --social-bg: rgba(255, 255, 255, 0.08);
+    --text: #000000;
+    --text-h: #000000;
+    --bg: #ffffff;
+    --border: rgba(0, 0, 0, 0.1);
+    --code-bg: rgba(255, 82, 0, 0.08);
+    --accent: #FF5200;
+    --accent-bg: rgba(255, 82, 0, 0.1);
+    --accent-border: rgba(255, 82, 0, 0.5);
+    --social-bg: rgba(255, 82, 0, 0.08);
     --shadow:
       rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
   }
 
   #social .button-icon {
-    filter: invert(1) brightness(2);
+    filter: none;
   }
 }
 
 body {
   margin: 0;
+  background: #ffffff;
 }
 
 #root {
@@ -64,12 +65,13 @@ body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: #ffffff;
 }
 
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-h);
 }
 
@@ -77,6 +79,7 @@ h1 {
   font-size: 56px;
   letter-spacing: -1.68px;
   margin: 32px 0;
+  color: #000000;
   @media (max-width: 1024px) {
     font-size: 36px;
     margin: 20px 0;
@@ -87,12 +90,14 @@ h2 {
   line-height: 118%;
   letter-spacing: -0.24px;
   margin: 0 0 8px;
+  color: #000000;
   @media (max-width: 1024px) {
     font-size: 20px;
   }
 }
 p {
   margin: 0;
+  color: #000000;
 }
 
 code,
@@ -100,7 +105,7 @@ code,
   font-family: var(--mono);
   display: inline-flex;
   border-radius: 4px;
-  color: var(--text-h);
+  color: #FF5200;
 }
 
 code {
@@ -108,9 +113,71 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+  color: #FF5200;
 }
 
-/* Make table column headers black to contrast the magenta background */
+/* Table styling */
+table {
+  background: #ffffff;
+  border-collapse: collapse;
+}
+
 table thead th {
-  color: #000 !important;
+  color: #ffffff !important;
+  background-color: #FF5200 !important;
+  font-weight: 600;
+  padding: 12px !important;
+}
+
+table tbody td {
+  color: #000000;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 10px !important;
+}
+
+table tbody tr:hover {
+  background-color: rgba(255, 82, 0, 0.05);
+}
+
+button {
+  background-color: #FF5200;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s, box-shadow 0.3s;
+  font-family: var(--sans);
+}
+
+button:hover {
+  background-color: #E64A00;
+  box-shadow: var(--shadow);
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+textarea, input, select {
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #FF5200;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: var(--sans);
+  font-size: 16px;
+}
+
+textarea:focus, input:focus, select:focus {
+  outline: none;
+  border-color: #E64A00;
+  box-shadow: 0 0 0 3px rgba(255, 82, 0, 0.1);
+}
+
+label {
+  color: #000000;
+  font-weight: 500;
 }
