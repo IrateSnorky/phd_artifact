@@ -35,6 +35,9 @@ export default function OfficeStoryView() {
   const [selectedOfficeId, setSelectedOfficeId] = useState(officeSettings[0].id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [transformedStory, setTransformedStory] = useState(null);
+  const [transforming, setTransforming] = useState(false);
+  const [transformError, setTransformError] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,6 +68,44 @@ export default function OfficeStoryView() {
   const selectedOffice = officeSettings.find((office) => office.id === selectedOfficeId) ?? officeSettings[0];
   const storyText = selectedStory?.generatedStory || selectedStory?.storyPrompt || selectedStory?.storyInstructions;
 
+  const selectStory = (storyId) => {
+    setSelectedStoryId(storyId);
+    setTransformedStory(null);
+    setTransformError(null);
+  };
+
+  const selectOffice = (officeId) => {
+    setSelectedOfficeId(officeId);
+    setTransformedStory(null);
+    setTransformError(null);
+  };
+
+  const transformStoryForOffice = async () => {
+    if (!selectedStory || !storyText) return;
+
+    setTransforming(true);
+    setTransformError(null);
+    try {
+      const response = await fetch(`${API}/stories/${selectedStory.storyId}/transform-for-office`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          officeName: selectedOffice.name,
+          officeDescription: selectedOffice.description,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || data || 'Failed to transform story');
+      }
+      setTransformedStory(data.transformedStory);
+    } catch (err) {
+      setTransformError(err.message || String(err));
+    } finally {
+      setTransforming(false);
+    }
+  };
+
   if (loading) {
     return <p style={{ padding: 20, color: '#000000' }}>Loading stories...</p>;
   }
@@ -91,7 +132,8 @@ export default function OfficeStoryView() {
           <select
             id="story-select"
             value={selectedStory?.storyId ?? ''}
-            onChange={(event) => setSelectedStoryId(event.target.value)}
+            onChange={(event) => selectStory(event.target.value)}
+            disabled={transforming}
             style={{ boxSizing: 'border-box', width: '100%' }}
           >
             {stories.length === 0 && <option value="">No stories available</option>}
@@ -108,7 +150,8 @@ export default function OfficeStoryView() {
           <select
             id="office-select"
             value={selectedOffice.id}
-            onChange={(event) => setSelectedOfficeId(event.target.value)}
+            onChange={(event) => selectOffice(event.target.value)}
+            disabled={transforming}
             style={{ boxSizing: 'border-box', width: '100%' }}
           >
             {officeSettings.map((office) => (
@@ -140,6 +183,28 @@ export default function OfficeStoryView() {
 
           <div style={{ padding: 24 }}>
             <p style={{ color: '#374151', marginBottom: 20 }}>{selectedOffice.description}</p>
+            <button
+              type="button"
+              onClick={transformStoryForOffice}
+              disabled={!storyText || transforming}
+              style={{
+                backgroundColor: transforming ? '#9ca3af' : selectedOffice.accent,
+                border: 'none',
+                borderRadius: 6,
+                color: '#ffffff',
+                cursor: !storyText || transforming ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                marginBottom: 16,
+                padding: '10px 16px',
+              }}
+            >
+              {transforming ? 'Transforming...' : `Transform story for ${selectedOffice.name}`}
+            </button>
+            {transformError && (
+              <p role="alert" style={{ color: '#b91c1c', marginTop: 0, marginBottom: 16 }}>
+                {transformError}
+              </p>
+            )}
             <div style={{
               backgroundColor: '#ffffff',
               borderRadius: 8,
@@ -150,7 +215,7 @@ export default function OfficeStoryView() {
                 STORY {selectedStory.storyId}{selectedStory.genreName ? ` · ${selectedStory.genreName}` : ''}
               </p>
               <p style={{ color: '#111827', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                {storyText || 'This story does not yet have content to display.'}
+                {transformedStory || storyText || 'This story does not yet have content to display.'}
               </p>
             </div>
           </div>

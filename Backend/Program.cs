@@ -140,6 +140,68 @@ app.MapDelete("/stories/{id}", async (int id, AppDbContext db) =>
     return Results.NoContent();
 });
 
+app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, AppDbContext db) =>
+{
+    var story = await db.Stories.FindAsync(id);
+    if (story is null) return Results.NotFound();
+    if (string.IsNullOrWhiteSpace(input.OfficeName) || string.IsNullOrWhiteSpace(input.OfficeDescription))
+        return Results.BadRequest("Office name and description are required");
+
+    var sourceStory = story.GeneratedStory ?? story.StoryPrompt ?? story.StoryInstructions;
+    if (string.IsNullOrWhiteSpace(sourceStory))
+        return Results.BadRequest("This story does not have content to transform");
+
+    var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+    if (string.IsNullOrEmpty(geminiApiKey))
+        return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+
+    var prompt = $"""
+        Rewrite the story below so its backdrop naturally takes place in this office setting.
+        Preserve the story's plot, characters, tone, and approximate length. Change only details
+        needed to make the setting feel integral to the story. Return only the rewritten story.
+
+        Office setting: {input.OfficeName}
+        Office context: {input.OfficeDescription}
+
+        Story:
+        {sourceStory}
+        """;
+
+    using var httpClient = new HttpClient();
+    var requestBody = new
+    {
+        contents = new[]
+        {
+            new { parts = new[] { new { text = prompt } } }
+        }
+    };
+    var jsonContent = new StringContent(
+        System.Text.Json.JsonSerializer.Serialize(requestBody),
+        System.Text.Encoding.UTF8,
+        "application/json");
+    var response = await httpClient.PostAsync(
+        $"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={geminiApiKey}",
+        jsonContent);
+
+    if (!response.IsSuccessStatusCode)
+    {
+        var errorContent = await response.Content.ReadAsStringAsync();
+        return Results.BadRequest($"Gemini API error: {response.StatusCode} - {errorContent}");
+    }
+
+    using var responseDocument = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    var transformedStory = responseDocument.RootElement
+        .GetProperty("candidates")[0]
+        .GetProperty("content")
+        .GetProperty("parts")[0]
+        .GetProperty("text")
+        .GetString();
+
+    return string.IsNullOrWhiteSpace(transformedStory)
+        ? Results.BadRequest("Gemini returned an empty transformed story")
+        : Results.Ok(new { transformedStory });
+});
+
 // Knowledge base endpoints (used to retrieve reference context for story generation)
 app.MapGet("/knowledge", async (AppDbContext db) =>
     await db.KnowledgeChunks
@@ -401,6 +463,8 @@ static double CosineSimilarity(float[] a, float[] b)
 }
 
 record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
+
+record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
