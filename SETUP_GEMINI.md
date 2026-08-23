@@ -31,7 +31,7 @@ dotnet run
 
 The environment variable will be picked up automatically.
 
-## Step 4: Test in UI
+## Step 4: Test story generation in the UI
 
 1. Create a story with:
    - **Instructions:** "Write a dramatic scene"
@@ -40,6 +40,16 @@ The environment variable will be picked up automatically.
 
 2. Click the **"Generate"** button
 3. Watch it create a one-paragraph story!
+
+## Transforming a story for an office setting
+
+The same `GEMINI_API_KEY` is used by the **Office View**. After creating or generating a story:
+
+1. Open **Office View**.
+2. Select the story and an office setting.
+3. Click **Transform story for [office name]**.
+
+The transformation changes the displayed backdrop to fit the selected office while preserving the saved original story. It is temporary and is cleared when you select a different story or office setting.
 
 ## Troubleshooting
 
