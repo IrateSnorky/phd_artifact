@@ -8,6 +8,7 @@ export default function Stories() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [generating, setGenerating] = useState(null);
+  const [viewingStoryId, setViewingStoryId] = useState(null);
   const [newText, setNewText] = useState('');
   const [newPrompt, setNewPrompt] = useState('');
   const [newGenre, setNewGenre] = useState('');
@@ -105,6 +106,8 @@ export default function Stories() {
 
   if (loading) return <p style={{ padding: 20, color: '#000000' }}>Loading stories...</p>;
   if (error) return <p style={{ color: '#E64A00', padding: 20, fontWeight: 'bold' }}>Error: {error}</p>;
+
+  const viewingStory = viewingStoryId ? stories.find(s => s.storyId === viewingStoryId) : null;
 
   return (
     <div style={{ padding: 20, backgroundColor: '#ffffff' }}>
@@ -261,9 +264,22 @@ export default function Stories() {
                   <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.95em' }}>{s.storyPrompt}</div>
                 )}
               </td>
-              <td style={{ color: '#666666' }}>
-                <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9em', fontStyle: 'italic' }}>
-                  {s.generatedStory ? s.generatedStory.substring(0, 80) + '...' : '(none)'}
+              <td style={{ color: '#666666', cursor: s.generatedStory ? 'pointer' : 'default' }}>
+                <div 
+                  onClick={() => s.generatedStory && setViewingStoryId(s.storyId)}
+                  style={{ 
+                    whiteSpace: 'pre-wrap', 
+                    fontSize: '0.9em', 
+                    fontStyle: 'italic',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    backgroundColor: s.generatedStory ? 'rgba(255, 82, 0, 0.05)' : 'transparent',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => s.generatedStory && (e.currentTarget.style.backgroundColor = 'rgba(255, 82, 0, 0.15)')}
+                  onMouseLeave={(e) => s.generatedStory && (e.currentTarget.style.backgroundColor = 'rgba(255, 82, 0, 0.05)')}
+                >
+                  {s.generatedStory ? s.generatedStory.substring(0, 80) + '... (click to view)' : '(none)'}
                 </div>
               </td>
               <td style={{ color: '#000000' }}>
@@ -382,6 +398,111 @@ export default function Stories() {
         </tbody>
       </table>
       </div>
+
+      {/* Modal for viewing full generated story */}
+      {viewingStory && viewingStory.generatedStory && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '700px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflowY: 'auto',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)',
+            border: '3px solid #FF5200'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h2 style={{ color: '#FF5200', margin: 0 }}>Generated Story</h2>
+              <button
+                onClick={() => setViewingStoryId(null)}
+                style={{
+                  backgroundColor: '#E64A00',
+                  color: '#ffffff',
+                  border: 'none',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: 600, color: '#666666', fontSize: '12px', textTransform: 'uppercase' }}>Genre</label>
+              <p style={{ color: '#000000', fontSize: '16px', margin: '4px 0 0 0' }}>{viewingStory.genreName || '-'}</p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: 600, color: '#666666', fontSize: '12px', textTransform: 'uppercase' }}>Instructions</label>
+              <p style={{ color: '#000000', fontSize: '14px', margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>{viewingStory.storyInstructions}</p>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: 600, color: '#666666', fontSize: '12px', textTransform: 'uppercase' }}>Prompt</label>
+              <p style={{ color: '#000000', fontSize: '14px', margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>{viewingStory.storyPrompt}</p>
+            </div>
+
+            <div style={{
+              backgroundColor: '#f9f9f9',
+              border: '2px solid #FF5200',
+              borderRadius: '8px',
+              padding: '20px',
+              marginBottom: 24
+            }}>
+              <label style={{ fontWeight: 600, color: '#FF5200', fontSize: '12px', textTransform: 'uppercase', display: 'block', marginBottom: 12 }}>Full Story</label>
+              <p style={{ 
+                color: '#000000', 
+                fontSize: '16px', 
+                lineHeight: '1.6',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word'
+              }}>
+                {viewingStory.generatedStory}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setViewingStoryId(null)}
+              style={{
+                backgroundColor: '#FF5200',
+                color: '#ffffff',
+                border: 'none',
+                padding: '10px 24px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '14px',
+                width: '100%'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#E64A00'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#FF5200'}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

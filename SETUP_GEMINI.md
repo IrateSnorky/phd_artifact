@@ -18,7 +18,7 @@ export GEMINI_API_KEY="your_api_key_here"
 
 Alternatively, add to `~/.zshrc` or `~/.bash_profile` for persistence:
 ```bash
-echo 'export GEMINI_API_KEY="your_key_here"' >> ~/.zshrc
+echo 'export GEMINI_API_KEY="your_api_key_here"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
