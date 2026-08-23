@@ -8,7 +8,7 @@ function App() {
   useEffect(() => {
     // Note: Verify your backend HTTPS port in Backend/Properties/launchSettings.json
     // It is typically 7001 or 7233. Update the URL below to match yours!
-    fetch('http://localhost:5066/weatherforecast')
+    fetch('https://localhost:7215/weatherforecast')
       .then((response) => {
         if (!response.ok) {
           throw new Error('Failed to fetch data from .NET Backend');
