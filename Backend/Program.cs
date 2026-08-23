@@ -7,7 +7,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
-        policy.WithOrigins("http://localhost:5173") // Default Vite React URL
+        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
@@ -22,17 +22,10 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Ensure database is freshly created for development and seed genres
+// Create the database when absent and seed genres without overwriting saved stories.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var dbPath = "stories.db";
-
-    // For development simplicity, if the DB exists remove it to ensure schema matches models
-    if (System.IO.File.Exists(dbPath))
-    {
-        System.IO.File.Delete(dbPath);
-    }
 
     db.Database.EnsureCreated();
 
