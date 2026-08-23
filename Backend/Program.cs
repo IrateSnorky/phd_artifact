@@ -29,6 +29,39 @@ using (var scope = app.Services.CreateScope())
 
     db.Database.EnsureCreated();
 
+    // EnsureCreated() only builds the schema for brand-new databases, so tables added after
+    // the database already existed (e.g. KnowledgeChunks) must be created explicitly here.
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "KnowledgeChunks" (
+            "KnowledgeChunkId" INTEGER NOT NULL CONSTRAINT "PK_KnowledgeChunks" PRIMARY KEY AUTOINCREMENT,
+            "Content" TEXT NOT NULL,
+            "Source" TEXT NULL,
+            "Embedding" TEXT NULL
+        );
+        """);
+
+    // Likewise, columns added to an existing table (e.g. AlwaysInclude for guardrails)
+    // must be applied manually since EnsureCreated() will not alter existing tables.
+    var hasAlwaysIncludeColumn = db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('KnowledgeChunks') WHERE name = 'AlwaysInclude'"
+    ).AsEnumerable().First() > 0;
+    if (!hasAlwaysIncludeColumn)
+    {
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"KnowledgeChunks\" ADD COLUMN \"AlwaysInclude\" INTEGER NOT NULL DEFAULT 0;"
+        );
+    }
+
+    var hasGenreIdColumn = db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('KnowledgeChunks') WHERE name = 'GenreId'"
+    ).AsEnumerable().First() > 0;
+    if (!hasGenreIdColumn)
+    {
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"KnowledgeChunks\" ADD COLUMN \"GenreId\" INTEGER NULL;"
+        );
+    }
+
     if (!db.StoryGenres.Any())
     {
         db.StoryGenres.AddRange(new[] {
@@ -107,7 +140,99 @@ app.MapDelete("/stories/{id}", async (int id, AppDbContext db) =>
     return Results.NoContent();
 });
 
-// Generate story endpoint using Google Gemini
+// Knowledge base endpoints (used to retrieve reference context for story generation)
+app.MapGet("/knowledge", async (AppDbContext db) =>
+    await db.KnowledgeChunks
+        .Select(k => new { id = k.KnowledgeChunkId, content = k.Content, source = k.Source, alwaysInclude = k.AlwaysInclude, genreId = k.GenreId, genreName = k.Genre != null ? k.Genre.Name : null })
+        .ToListAsync());
+
+app.MapPost("/knowledge", async (KnowledgeRequest input, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(input.Content))
+        return Results.BadRequest("Content is required");
+
+    var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+    if (string.IsNullOrEmpty(geminiApiKey))
+        return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+
+    // Guardrails apply as whole documents (e.g. "no graphic violence"), so they are not
+    // split into paragraphs the way retrievable reference lore is.
+    var paragraphs = input.AlwaysInclude
+        ? new List<string> { input.Content.Trim() }
+        : input.Content
+            .Split(new[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
+    if (paragraphs.Count == 0) paragraphs.Add(input.Content.Trim());
+
+    using var httpClient = new HttpClient();
+    var created = new List<KnowledgeChunk>();
+
+    foreach (var paragraph in paragraphs)
+    {
+        var embedding = await GetEmbeddingAsync(httpClient, geminiApiKey, paragraph);
+        if (embedding is null)
+            return Results.BadRequest("Failed to generate embedding for one or more chunks");
+
+        var chunk = new KnowledgeChunk
+        {
+            Content = paragraph,
+            Source = input.Source,
+            AlwaysInclude = input.AlwaysInclude,
+            GenreId = input.GenreId,
+            Embedding = System.Text.Json.JsonSerializer.Serialize(embedding)
+        };
+        db.KnowledgeChunks.Add(chunk);
+        created.Add(chunk);
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Created("/knowledge", created.Select(c => new { id = c.KnowledgeChunkId, content = c.Content, source = c.Source, alwaysInclude = c.AlwaysInclude, genreId = c.GenreId }));
+});
+
+app.MapPut("/knowledge/{id}", async (int id, KnowledgeRequest input, AppDbContext db) =>
+{
+    var chunk = await db.KnowledgeChunks.FindAsync(id);
+    if (chunk is null) return Results.NotFound();
+    if (string.IsNullOrWhiteSpace(input.Content))
+        return Results.BadRequest("Content is required");
+
+    var trimmedContent = input.Content.Trim();
+    var contentChanged = trimmedContent != chunk.Content;
+
+    if (contentChanged)
+    {
+        var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        if (string.IsNullOrEmpty(geminiApiKey))
+            return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+
+        using var httpClient = new HttpClient();
+        var embedding = await GetEmbeddingAsync(httpClient, geminiApiKey, trimmedContent);
+        if (embedding is null)
+            return Results.BadRequest("Failed to generate embedding");
+        chunk.Embedding = System.Text.Json.JsonSerializer.Serialize(embedding);
+    }
+
+    chunk.Content = trimmedContent;
+    chunk.Source = input.Source;
+    chunk.AlwaysInclude = input.AlwaysInclude;
+    chunk.GenreId = input.GenreId;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { id = chunk.KnowledgeChunkId, content = chunk.Content, source = chunk.Source, alwaysInclude = chunk.AlwaysInclude, genreId = chunk.GenreId });
+});
+
+app.MapDelete("/knowledge/{id}", async (int id, AppDbContext db) =>
+{
+    var chunk = await db.KnowledgeChunks.FindAsync(id);
+    if (chunk is null) return Results.NotFound();
+    db.KnowledgeChunks.Remove(chunk);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// Generate story endpoint using Google Gemini, augmented with RAG over the knowledge base
 app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
 {
     var story = await db.Stories.FindAsync(id);
@@ -119,14 +244,60 @@ app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
 
     var genre = story.GenreId.HasValue ? (await db.StoryGenres.FindAsync(story.GenreId))?.Name : "General";
 
-    var prompt = $"""
-Generate a single paragraph story (2-3 sentences) based on these inputs:
-- Genre: {genre}
-- Instructions: {story.StoryInstructions}
-- Prompt: {story.StoryPrompt}
+    // Guardrails always apply when generating a story of a matching genre (or genre-less guardrails, which apply to all).
+    var guardrails = await db.KnowledgeChunks
+        .Where(k => k.AlwaysInclude && (k.GenreId == null || k.GenreId == story.GenreId))
+        .Select(k => k.Content)
+        .ToListAsync();
 
-Write only the story paragraph, nothing else.
-""";
+    // Retrieve relevant (non-guardrail) knowledge base chunks for this story's prompt/instructions.
+    var retrievedContext = "";
+    using (var embedClient = new HttpClient())
+    {
+        var queryText = $"{story.StoryPrompt} {story.StoryInstructions}".Trim();
+        var queryEmbedding = string.IsNullOrEmpty(queryText) ? null : await GetEmbeddingAsync(embedClient, geminiApiKey, queryText);
+
+        if (queryEmbedding is not null)
+        {
+            var chunks = await db.KnowledgeChunks.Where(k => !k.AlwaysInclude).ToListAsync();
+            var topMatches = chunks
+                .Select(c => new
+                {
+                    Chunk = c,
+                    Score = CosineSimilarity(queryEmbedding, DeserializeEmbedding(c.Embedding))
+                })
+                .Where(x => x.Score > 0.5)
+                .OrderByDescending(x => x.Score)
+                .Take(3)
+                .ToList();
+
+            if (topMatches.Count > 0)
+                retrievedContext = string.Join("\n---\n", topMatches.Select(x => x.Chunk.Content));
+        }
+    }
+
+    var promptBuilder = new System.Text.StringBuilder();
+    if (guardrails.Count > 0)
+    {
+        promptBuilder.AppendLine("Story guardrails (must always be followed, no exceptions):");
+        foreach (var guardrail in guardrails)
+            promptBuilder.AppendLine($"- {guardrail}");
+        promptBuilder.AppendLine();
+    }
+    promptBuilder.AppendLine("Generate a single paragraph story (2-3 sentences) based on these inputs:");
+    promptBuilder.AppendLine($"- Genre: {genre}");
+    promptBuilder.AppendLine($"- Instructions: {story.StoryInstructions}");
+    promptBuilder.AppendLine($"- Prompt: {story.StoryPrompt}");
+    if (!string.IsNullOrEmpty(retrievedContext))
+    {
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Relevant reference context (use for consistency if applicable):");
+        promptBuilder.AppendLine(retrievedContext);
+    }
+    promptBuilder.AppendLine();
+    promptBuilder.AppendLine("Write only the story paragraph, nothing else.");
+
+    var prompt = promptBuilder.ToString();
 
     try
     {
@@ -182,6 +353,54 @@ Write only the story paragraph, nothing else.
 });
 
 app.Run();
+
+// Calls Gemini's embedding model to convert text into a vector for similarity search.
+static async Task<float[]?> GetEmbeddingAsync(HttpClient client, string apiKey, string text)
+{
+    var requestBody = new
+    {
+        content = new { parts = new[] { new { text } } }
+    };
+
+    var jsonContent = new StringContent(
+        System.Text.Json.JsonSerializer.Serialize(requestBody),
+        System.Text.Encoding.UTF8,
+        "application/json"
+    );
+
+    var response = await client.PostAsync(
+        $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}",
+        jsonContent
+    );
+
+    if (!response.IsSuccessStatusCode) return null;
+
+    var responseContent = await response.Content.ReadAsStringAsync();
+    using var doc = System.Text.Json.JsonDocument.Parse(responseContent);
+    var values = doc.RootElement.GetProperty("embedding").GetProperty("values");
+    return values.EnumerateArray().Select(v => v.GetSingle()).ToArray();
+}
+
+static float[] DeserializeEmbedding(string? json) =>
+    string.IsNullOrEmpty(json) ? Array.Empty<float>() : System.Text.Json.JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>();
+
+static double CosineSimilarity(float[] a, float[] b)
+{
+    if (a.Length == 0 || b.Length == 0 || a.Length != b.Length) return 0;
+
+    double dot = 0, magnitudeA = 0, magnitudeB = 0;
+    for (var i = 0; i < a.Length; i++)
+    {
+        dot += a[i] * b[i];
+        magnitudeA += a[i] * a[i];
+        magnitudeB += b[i] * b[i];
+    }
+
+    if (magnitudeA == 0 || magnitudeB == 0) return 0;
+    return dot / (Math.Sqrt(magnitudeA) * Math.Sqrt(magnitudeB));
+}
+
+record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {

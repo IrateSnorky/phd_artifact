@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import KnowledgeBase from './KnowledgeBase';
 import OfficeStoryView from './OfficeStoryView';
 import Stories from './Stories';
 
@@ -37,12 +38,24 @@ function App() {
             >
               Office View
             </button>
+            <button
+              type="button"
+              onClick={() => setPage('knowledge-base')}
+              style={{
+                backgroundColor: page === 'knowledge-base' ? '#ffffff' : 'rgba(255, 255, 255, 0.2)',
+                color: page === 'knowledge-base' ? '#FF5200' : '#ffffff',
+              }}
+            >
+              Knowledge Base
+            </button>
           </nav>
         </div>
       </header>
 
       <main style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
-        {page === 'stories' ? <Stories /> : <OfficeStoryView />}
+        {page === 'stories' && <Stories />}
+        {page === 'office-view' && <OfficeStoryView />}
+        {page === 'knowledge-base' && <KnowledgeBase />}
       </main>
     </div>
   );
