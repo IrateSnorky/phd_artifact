@@ -7,6 +7,7 @@ public class AppDbContext : DbContext
     public DbSet<Story> Stories { get; set; } = null!;
     public DbSet<StoryGenre> StoryGenres { get; set; } = null!;
     public DbSet<KnowledgeChunk> KnowledgeChunks { get; set; } = null!;
+    public DbSet<NarrativeTransportationEvaluation> NarrativeTransportationEvaluations { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +24,12 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(k => k.GenreId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<NarrativeTransportationEvaluation>()
+            .HasOne(e => e.Story)
+            .WithMany()
+            .HasForeignKey(e => e.StoryId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Optional: seed defaults (also handled manually at startup below)
         modelBuilder.Entity<StoryGenre>().HasData(

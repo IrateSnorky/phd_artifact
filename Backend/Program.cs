@@ -72,6 +72,22 @@ using (var scope = app.Services.CreateScope())
         );
     }
 
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "NarrativeTransportationEvaluations" (
+            "NarrativeTransportationEvaluationId" INTEGER NOT NULL CONSTRAINT "PK_NarrativeTransportationEvaluations" PRIMARY KEY AUTOINCREMENT,
+            "StoryId" INTEGER NOT NULL,
+            "ResponsesJson" TEXT NOT NULL,
+            "AdjustedResponsesJson" TEXT NOT NULL,
+            "TransformedStory" TEXT NOT NULL,
+            "OfficeName" TEXT NOT NULL,
+            "OfficeDescription" TEXT NOT NULL,
+            "SubmittedAtUtc" TEXT NOT NULL,
+            "StoryVersion" TEXT NOT NULL,
+            "TotalScore" INTEGER NOT NULL,
+            CONSTRAINT "FK_NarrativeTransportationEvaluations_Stories_StoryId" FOREIGN KEY ("StoryId") REFERENCES "Stories" ("StoryId") ON DELETE CASCADE
+        );
+        """);
+
     if (!db.StoryGenres.Any())
     {
         db.StoryGenres.AddRange(new[] {
@@ -163,6 +179,10 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
 {
     var story = await db.Stories.FindAsync(id);
     if (story is null) return Results.NotFound();
+    if (string.IsNullOrWhiteSpace(request.TransformedStory) ||
+        string.IsNullOrWhiteSpace(request.OfficeName) ||
+        string.IsNullOrWhiteSpace(request.StoryVersion))
+        return Results.BadRequest("Transformed story, office name, and story version are required.");
 
     var responses = request.Responses ?? Array.Empty<int>();
     if (responses.Length != 15)
@@ -171,14 +191,28 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
     if (responses.Any(r => r < 1 || r > 7))
         return Results.BadRequest("Each response must be between 1 and 7.");
 
+    var adjustedResponses = new int[responses.Length];
     var total = 0;
     for (var i = 0; i < responses.Length; i++)
     {
-        var value = responses[i];
-        total += i == 6 ? 8 - value : value;
+        adjustedResponses[i] = i == 6 ? 8 - responses[i] : responses[i];
+        total += adjustedResponses[i];
     }
 
     story.NarrativeTransportationScore = total;
+    var evaluation = new NarrativeTransportationEvaluation
+    {
+        StoryId = story.StoryId,
+        ResponsesJson = System.Text.Json.JsonSerializer.Serialize(responses),
+        AdjustedResponsesJson = System.Text.Json.JsonSerializer.Serialize(adjustedResponses),
+        TransformedStory = request.TransformedStory,
+        OfficeName = request.OfficeName,
+        OfficeDescription = request.OfficeDescription,
+        SubmittedAtUtc = DateTime.UtcNow,
+        StoryVersion = request.StoryVersion,
+        TotalScore = total,
+    };
+    db.NarrativeTransportationEvaluations.Add(evaluation);
     await db.SaveChangesAsync();
 
     return Results.Ok(new
@@ -187,8 +221,32 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
         average = total / 15.0,
         maxScore = 105,
         itemCount = 15,
+        evaluationId = evaluation.NarrativeTransportationEvaluationId,
+        storyVersion = evaluation.StoryVersion,
+        submittedAtUtc = evaluation.SubmittedAtUtc,
+        responses,
+        adjustedResponses,
     });
 });
+
+app.MapGet("/stories/{id}/narrative-transportation", async (int id, AppDbContext db) =>
+    await db.NarrativeTransportationEvaluations
+        .Where(e => e.StoryId == id)
+        .OrderByDescending(e => e.SubmittedAtUtc)
+        .Select(e => new
+        {
+            evaluationId = e.NarrativeTransportationEvaluationId,
+            storyId = e.StoryId,
+            responses = e.ResponsesJson,
+            adjustedResponses = e.AdjustedResponsesJson,
+            transformedStory = e.TransformedStory,
+            officeName = e.OfficeName,
+            officeDescription = e.OfficeDescription,
+            submittedAtUtc = e.SubmittedAtUtc,
+            storyVersion = e.StoryVersion,
+            totalScore = e.TotalScore,
+        })
+        .ToListAsync());
 
 app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, AppDbContext db) =>
 {
@@ -249,7 +307,7 @@ app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTran
 
     return string.IsNullOrWhiteSpace(transformedStory)
         ? Results.BadRequest("Gemini returned an empty transformed story")
-        : Results.Ok(new { transformedStory });
+        : Results.Ok(new { transformedStory, storyVersion = Guid.NewGuid().ToString("N") });
 });
 
 // Knowledge base endpoints (used to retrieve reference context for story generation)
@@ -606,7 +664,12 @@ static double CosineSimilarity(float[] a, float[] b)
 
 record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
 
-record NarrativeTransportationSurveyRequest(int[] Responses);
+record NarrativeTransportationSurveyRequest(
+    int[] Responses,
+    string TransformedStory,
+    string OfficeName,
+    string OfficeDescription,
+    string StoryVersion);
 
 record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
 

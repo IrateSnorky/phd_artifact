@@ -55,6 +55,7 @@ export default function OfficeStoryView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [transformedStory, setTransformedStory] = useState(null);
+  const [storyVersion, setStoryVersion] = useState(null);
   const [transforming, setTransforming] = useState(false);
   const [transformError, setTransformError] = useState(null);
   const [surveyResponses, setSurveyResponses] = useState(Array(15).fill(null));
@@ -91,10 +92,18 @@ export default function OfficeStoryView() {
   const selectedStory = stories.find((story) => story.storyId === Number(selectedStoryId)) ?? stories[0];
   const selectedOffice = officeSettings.find((office) => office.id === selectedOfficeId) ?? officeSettings[0];
   const storyText = selectedStory?.generatedStory || selectedStory?.storyPrompt || selectedStory?.storyInstructions;
+  const improvementSignals = surveyResult
+    ? surveyResponses
+      .map((response, index) => ({ response, index, item: narrativeTransportationItems[index] }))
+      .filter(({ index }) => index !== 6)
+      .sort((left, right) => left.response - right.response)
+      .slice(0, 3)
+    : [];
 
   const selectStory = (storyId) => {
     setSelectedStoryId(storyId);
     setTransformedStory(null);
+    setStoryVersion(null);
     setTransformError(null);
     setSurveyResponses(Array(15).fill(null));
     setSurveyError(null);
@@ -104,6 +113,7 @@ export default function OfficeStoryView() {
   const selectOffice = (officeId) => {
     setSelectedOfficeId(officeId);
     setTransformedStory(null);
+    setStoryVersion(null);
     setTransformError(null);
     setSurveyResponses(Array(15).fill(null));
     setSurveyError(null);
@@ -144,6 +154,7 @@ export default function OfficeStoryView() {
         throw new Error(data?.detail || data?.title || data?.message || data || 'Failed to transform story');
       }
       setTransformedStory(data.transformedStory);
+      setStoryVersion(data.storyVersion);
       setSurveyResponses(Array(15).fill(null));
       setSurveyResult(null);
       setSurveyError(null);
@@ -175,7 +186,13 @@ export default function OfficeStoryView() {
       const response = await fetch(`${API}/stories/${selectedStory.storyId}/narrative-transportation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responses: surveyResponses.map((value) => Number(value)) }),
+        body: JSON.stringify({
+          responses: surveyResponses.map((value) => Number(value)),
+          transformedStory,
+          officeName: selectedOffice.name,
+          officeDescription: selectedOffice.description,
+          storyVersion,
+        }),
       });
 
       if (!response.ok) {
@@ -334,6 +351,20 @@ export default function OfficeStoryView() {
                     <p style={{ margin: '8px 0 0', color: '#374151' }}>
                       Average: {surveyResult.average.toFixed(2)}/7
                     </p>
+                    <h4 style={{ margin: '20px 0 8px', color: '#111827' }}>Improvement signals</h4>
+                    <ul style={{ margin: '0 0 12px', paddingLeft: 20, color: '#374151' }}>
+                      {improvementSignals.map(({ response, item }) => (
+                        <li key={item} style={{ marginBottom: 6 }}>
+                          {response}/7: {item}
+                        </li>
+                      ))}
+                    </ul>
+                    {surveyResponses[6] >= 5 && (
+                      <p style={{ margin: 0, color: '#9a3412' }}>
+                        Attention drift was high ({surveyResponses[6]}/7). Consider tightening pacing,
+                        removing repetition, or strengthening narrative tension.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div>
