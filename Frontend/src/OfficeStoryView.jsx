@@ -28,6 +28,30 @@ const officeSettings = [
     accent: '#FF5200',
     background: '#fffaf7',
   },
+  {
+    id: 'advertising-agency',
+    name: 'Advertising agency',
+    label: 'Campaign concept review',
+    description: 'A creative setting for exploring a narrative with a campaign and brand team.',
+    accent: '#FF5200',
+    background: '#fff3e6',
+  },
+  {
+    id: 'travel-agent',
+    name: 'Travel agent',
+    label: 'Destination consultation',
+    description: 'A welcoming setting for discussing a story alongside travel plans and destination ideas.',
+    accent: '#FF5200',
+    background: '#fff7ed',
+  },
+  {
+    id: 'civil-engineering',
+    name: 'Civil engineering',
+    label: 'Project planning review',
+    description: 'A practical setting for examining a narrative with an infrastructure project team.',
+    accent: '#FF5200',
+    background: '#fffaf7',
+  },
 ];
 
 const narrativeTransportationItems = [
