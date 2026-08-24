@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import KnowledgeBase from './KnowledgeBase';
 import OfficeStoryView from './OfficeStoryView';
+import { QuotaProvider } from './QuotaContext';
 import Stories from './Stories';
 
 const NAV_ITEMS = [
@@ -60,11 +61,13 @@ function App() {
         </div>
       </header>
 
-      <main style={styles.main}>
-        {page === 'stories' && <Stories />}
-        {page === 'office-view' && <OfficeStoryView />}
-        {page === 'knowledge-base' && <KnowledgeBase />}
-      </main>
+      <QuotaProvider>
+        <main style={styles.main}>
+          {page === 'stories' && <Stories />}
+          {page === 'office-view' && <OfficeStoryView />}
+          {page === 'knowledge-base' && <KnowledgeBase />}
+        </main>
+      </QuotaProvider>
     </div>
   );
 }

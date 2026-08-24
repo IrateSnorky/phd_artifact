@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
 
@@ -8,24 +9,24 @@ const officeSettings = [
     name: 'Law firm',
     label: 'Client matter briefing',
     description: 'A focused setting for reviewing a story alongside case notes and client objectives.',
-    accent: '#7c2d12',
-    background: '#fff7ed',
+    accent: '#FF5200',
+    background: '#fff3e6',
   },
   {
     id: 'software-startup',
     name: 'Software startup company',
     label: 'Product team review',
     description: 'A collaborative setting for sharing a narrative with a fast-moving product team.',
-    accent: '#4338ca',
-    background: '#f5f3ff',
+    accent: '#FF5200',
+    background: '#fff7ed',
   },
   {
     id: 'accounting-business',
     name: 'Accounting business',
     label: 'Client portfolio review',
     description: 'A clear, structured setting for considering a story with a client services team.',
-    accent: '#047857',
-    background: '#ecfdf5',
+    accent: '#FF5200',
+    background: '#fffaf7',
   },
 ];
 
@@ -60,6 +61,7 @@ export default function OfficeStoryView() {
   const [surveySubmitting, setSurveySubmitting] = useState(false);
   const [surveyError, setSurveyError] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
+  const { showQuotaMessage } = useQuotaMessage();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,16 +133,27 @@ export default function OfficeStoryView() {
           officeDescription: selectedOffice.description,
         }),
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = responseText;
+      }
       if (!response.ok) {
-        throw new Error(data.detail || data || 'Failed to transform story');
+        throw new Error(data?.detail || data?.title || data?.message || data || 'Failed to transform story');
       }
       setTransformedStory(data.transformedStory);
       setSurveyResponses(Array(15).fill(null));
       setSurveyResult(null);
       setSurveyError(null);
     } catch (err) {
-      setTransformError(err.message || String(err));
+      const message = err.message || String(err);
+      if (isQuotaError(message)) {
+        showQuotaMessage();
+      } else {
+        setTransformError(message);
+      }
     } finally {
       setTransforming(false);
     }
@@ -310,7 +323,7 @@ export default function OfficeStoryView() {
 
                 {surveyResult ? (
                   <div style={{
-                    backgroundColor: '#f5f3ff',
+                    backgroundColor: '#fff3e6',
                     borderRadius: 8,
                     padding: 16,
                     border: `1px solid ${selectedOffice.accent}`,

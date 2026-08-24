@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
 
@@ -204,6 +205,7 @@ export default function Stories() {
   const [editingText, setEditingText] = useState('');
   const [editingPrompt, setEditingPrompt] = useState('');
   const [editingGenre, setEditingGenre] = useState(null);
+  const { showQuotaMessage } = useQuotaMessage();
 
   const getErrorMessage = async (response) => {
     const rawText = await response.text();
@@ -332,7 +334,12 @@ export default function Stories() {
       await requestJson(`/stories/${id}/generate`, { method: 'POST' });
       await fetchStories();
     } catch (err) {
-      setError(err.message || String(err));
+      const message = err.message || String(err);
+      if (isQuotaError(message)) {
+        showQuotaMessage();
+      } else {
+        setError(message);
+      }
     } finally {
       setGenerating(null);
     }

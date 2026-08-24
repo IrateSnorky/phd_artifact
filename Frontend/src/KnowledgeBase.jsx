@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
 
@@ -18,6 +19,16 @@ export default function KnowledgeBase() {
   const [editAlwaysInclude, setEditAlwaysInclude] = useState(false);
   const [editGenreId, setEditGenreId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  const { showQuotaMessage } = useQuotaMessage();
+
+  const handleError = (err, setLocalError = setError) => {
+    const message = err.message || String(err);
+    if (isQuotaError(message)) {
+      showQuotaMessage();
+    } else {
+      setLocalError(message);
+    }
+  };
 
   const fetchGenres = async () => {
     try {
@@ -26,7 +37,7 @@ export default function KnowledgeBase() {
       // oxlint-disable-next-line react/set-state-in-effect
       setGenres(await res.json());
     } catch (err) {
-      setError(err.message || String(err));
+      handleError(err);
     }
   };
 
@@ -38,7 +49,7 @@ export default function KnowledgeBase() {
       // oxlint-disable-next-line react/set-state-in-effect
       setChunks(await res.json());
     } catch (err) {
-      setError(err.message || String(err));
+      handleError(err);
     } finally {
       setLoading(false);
     }
@@ -69,7 +80,7 @@ export default function KnowledgeBase() {
       setGenreId('');
       await fetchChunks();
     } catch (err) {
-      setError(err.message || String(err));
+      handleError(err);
     } finally {
       setSaving(false);
     }
@@ -116,7 +127,7 @@ export default function KnowledgeBase() {
       setEditingId(null);
       await fetchChunks();
     } catch (err) {
-      setError(err.message || String(err));
+      handleError(err);
     } finally {
       setEditSaving(false);
     }
