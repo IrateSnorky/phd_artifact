@@ -62,6 +62,16 @@ using (var scope = app.Services.CreateScope())
         );
     }
 
+    var hasNarrativeScoreColumn = db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Stories') WHERE name = 'NarrativeTransportationScore'"
+    ).AsEnumerable().First() > 0;
+    if (!hasNarrativeScoreColumn)
+    {
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Stories\" ADD COLUMN \"NarrativeTransportationScore\" INTEGER NULL;"
+        );
+    }
+
     if (!db.StoryGenres.Any())
     {
         db.StoryGenres.AddRange(new[] {
@@ -109,7 +119,16 @@ app.MapGet("/genres", async (AppDbContext db) =>
 // Stories endpoints
 app.MapGet("/stories", async (AppDbContext db) =>
     await db.Stories
-        .Select(s => new { storyId = s.StoryId, storyInstructions = s.StoryInstructions, storyPrompt = s.StoryPrompt, generatedStory = s.GeneratedStory, genreId = s.GenreId, genreName = s.Genre != null ? s.Genre.Name : null })
+        .Select(s => new
+        {
+            storyId = s.StoryId,
+            storyInstructions = s.StoryInstructions,
+            storyPrompt = s.StoryPrompt,
+            generatedStory = s.GeneratedStory,
+            narrativeTransportationScore = s.NarrativeTransportationScore,
+            genreId = s.GenreId,
+            genreName = s.Genre != null ? s.Genre.Name : null
+        })
         .ToListAsync());
 
 app.MapPost("/stories", async (Story story, AppDbContext db) =>
@@ -138,6 +157,37 @@ app.MapDelete("/stories/{id}", async (int id, AppDbContext db) =>
     db.Stories.Remove(story);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTransportationSurveyRequest request, AppDbContext db) =>
+{
+    var story = await db.Stories.FindAsync(id);
+    if (story is null) return Results.NotFound();
+
+    var responses = request.Responses ?? Array.Empty<int>();
+    if (responses.Length != 15)
+        return Results.BadRequest("Exactly 15 response values are required.");
+
+    if (responses.Any(r => r < 1 || r > 7))
+        return Results.BadRequest("Each response must be between 1 and 7.");
+
+    var total = 0;
+    for (var i = 0; i < responses.Length; i++)
+    {
+        var value = responses[i];
+        total += i == 6 ? 8 - value : value;
+    }
+
+    story.NarrativeTransportationScore = total;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        narrativeTransportationScore = total,
+        average = total / 15.0,
+        maxScore = 105,
+        itemCount = 15,
+    });
 });
 
 app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, AppDbContext db) =>
@@ -402,9 +452,24 @@ app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
                     .GetString();
 
                 story.GeneratedStory = generatedText;
+
+                try
+                {
+                    using var scoreClient = new HttpClient();
+                    story.NarrativeTransportationScore = await EvaluateNarrativeTransportationScoreAsync(
+                        scoreClient,
+                        geminiApiKey,
+                        generatedText
+                    );
+                }
+                catch
+                {
+                    story.NarrativeTransportationScore = null;
+                }
+
                 await db.SaveChangesAsync();
 
-                return Results.Ok(new { generatedStory = generatedText });
+                return Results.Ok(new { generatedStory = generatedText, narrativeTransportationScore = story.NarrativeTransportationScore });
             }
         }
     }
@@ -443,6 +508,83 @@ static async Task<float[]?> GetEmbeddingAsync(HttpClient client, string apiKey, 
     return values.EnumerateArray().Select(v => v.GetSingle()).ToArray();
 }
 
+static async Task<int?> EvaluateNarrativeTransportationScoreAsync(HttpClient client, string apiKey, string storyText)
+{
+    // This implements the 1-7 Likert scale described by the user.
+    // The reverse-scored item is the mind-wandering item, which is converted to a positive score before summing.
+    var items = new[]
+    {
+        "While I was reading the narrative, I could easily picture the events taking place.",
+        "I was mentally involved in the narrative while reading it.",
+        "The narrative affected me emotionally.",
+        "I found myself thinking of ways the narrative could have turned out differently.",
+        "While reading the narrative I had a vivid image of the characters.",
+        "I wanted to learn how the narrative ended.",
+        "I found my mind wandering while reading the narrative.",
+        "The events in the narrative are relevant to my everyday life.",
+        "The narrative changed my understanding of things."
+    };
+
+    var prompt = string.Join(
+        Environment.NewLine,
+        "Evaluate the following story using the Narrative Transportation scale.",
+        "Score each of these statements from 1 (not at all) to 7 (very much):",
+        string.Empty,
+        string.Join(Environment.NewLine, items.Select((item, index) => $"{index + 1}. {item}")),
+        string.Empty,
+        "Important: For the reverse-scored item (\"I found my mind wandering while reading the narrative.\"), compute the score as 8 - response so that higher values mean greater transportation.",
+        "Return only valid JSON in this exact shape:",
+        "{ \"total\": 0, \"average\": 0.0 }",
+        "Use the total score across all items, with total between 9 and 63, and average between 1.0 and 7.0.",
+        string.Empty,
+        "Story:",
+        storyText
+    );
+
+    var requestBody = new
+    {
+        contents = new[]
+        {
+            new { parts = new[] { new { text = prompt } } }
+        }
+    };
+
+    var jsonContent = new StringContent(
+        System.Text.Json.JsonSerializer.Serialize(requestBody),
+        System.Text.Encoding.UTF8,
+        "application/json"
+    );
+
+    var response = await client.PostAsync(
+        $"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={apiKey}",
+        jsonContent
+    );
+
+    if (!response.IsSuccessStatusCode) return null;
+
+    var responseContent = await response.Content.ReadAsStringAsync();
+    using var doc = System.Text.Json.JsonDocument.Parse(responseContent);
+    var rawText = doc.RootElement
+        .GetProperty("candidates")[0]
+        .GetProperty("content")
+        .GetProperty("parts")[0]
+        .GetProperty("text")
+        .GetString();
+
+    if (string.IsNullOrWhiteSpace(rawText)) return null;
+
+    var jsonStart = rawText.IndexOf('{');
+    var jsonEnd = rawText.LastIndexOf('}');
+    if (jsonStart < 0 || jsonEnd < jsonStart) return null;
+
+    var json = rawText.Substring(jsonStart, jsonEnd - jsonStart + 1);
+    using var scoreDoc = System.Text.Json.JsonDocument.Parse(json);
+    if (!scoreDoc.RootElement.TryGetProperty("total", out var totalElement)) return null;
+
+    var total = totalElement.GetInt32();
+    return Math.Clamp(total, 9, 63);
+}
+
 static float[] DeserializeEmbedding(string? json) =>
     string.IsNullOrEmpty(json) ? Array.Empty<float>() : System.Text.Json.JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>();
 
@@ -463,6 +605,8 @@ static double CosineSimilarity(float[] a, float[] b)
 }
 
 record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
+
+record NarrativeTransportationSurveyRequest(int[] Responses);
 
 record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
 

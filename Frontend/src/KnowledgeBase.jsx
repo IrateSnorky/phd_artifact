@@ -23,6 +23,7 @@ export default function KnowledgeBase() {
     try {
       const res = await fetch(`${API}/genres`);
       if (!res.ok) throw new Error('Failed to load genres');
+      // oxlint-disable-next-line react/set-state-in-effect
       setGenres(await res.json());
     } catch (err) {
       setError(err.message || String(err));
@@ -34,6 +35,7 @@ export default function KnowledgeBase() {
       setLoading(true);
       const res = await fetch(`${API}/knowledge`);
       if (!res.ok) throw new Error('Failed to load knowledge base');
+      // oxlint-disable-next-line react/set-state-in-effect
       setChunks(await res.json());
     } catch (err) {
       setError(err.message || String(err));
@@ -42,7 +44,10 @@ export default function KnowledgeBase() {
     }
   };
 
-  useEffect(() => { fetchGenres(); fetchChunks(); }, []);
+  useEffect(() => {
+    fetchGenres();
+    fetchChunks();
+  }, []);
 
   const addDocument = async () => {
     if (!content.trim()) return;

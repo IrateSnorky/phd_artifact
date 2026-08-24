@@ -29,6 +29,24 @@ const officeSettings = [
   },
 ];
 
+const narrativeTransportationItems = [
+  'While I was reading the narrative, I could easily picture the events taking place.',
+  'I was mentally involved in the narrative while reading it.',
+  'The narrative affected me emotionally.',
+  'I found myself thinking of ways the narrative could have turned out differently.',
+  'While reading the narrative I had a vivid image of the characters.',
+  'I wanted to learn how the narrative ended.',
+  'I found my mind wandering while reading the narrative.',
+  'The events in the narrative are relevant to my everyday life.',
+  'The narrative changed my understanding of things.',
+  'I felt like I was physically present in the setting of the narrative.',
+  'I had a sense of being in the story world.',
+  'The narrative had an emotional pull on me.',
+  'I thought about how the story might have unfolded differently.',
+  'I was absorbed in the narrative and lost track of time.',
+  'I felt fully immersed in the characters’ world.',
+];
+
 export default function OfficeStoryView() {
   const [stories, setStories] = useState([]);
   const [selectedStoryId, setSelectedStoryId] = useState('');
@@ -38,6 +56,10 @@ export default function OfficeStoryView() {
   const [transformedStory, setTransformedStory] = useState(null);
   const [transforming, setTransforming] = useState(false);
   const [transformError, setTransformError] = useState(null);
+  const [surveyResponses, setSurveyResponses] = useState(Array(15).fill(null));
+  const [surveySubmitting, setSurveySubmitting] = useState(false);
+  const [surveyError, setSurveyError] = useState(null);
+  const [surveyResult, setSurveyResult] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,12 +94,27 @@ export default function OfficeStoryView() {
     setSelectedStoryId(storyId);
     setTransformedStory(null);
     setTransformError(null);
+    setSurveyResponses(Array(15).fill(null));
+    setSurveyError(null);
+    setSurveyResult(null);
   };
 
   const selectOffice = (officeId) => {
     setSelectedOfficeId(officeId);
     setTransformedStory(null);
     setTransformError(null);
+    setSurveyResponses(Array(15).fill(null));
+    setSurveyError(null);
+    setSurveyResult(null);
+  };
+
+  const handleSurveyResponse = (index, value) => {
+    setSurveyResponses((current) => {
+      const next = [...current];
+      next[index] = Number(value);
+      return next;
+    });
+    setSurveyError(null);
   };
 
   const transformStoryForOffice = async () => {
@@ -99,10 +136,49 @@ export default function OfficeStoryView() {
         throw new Error(data.detail || data || 'Failed to transform story');
       }
       setTransformedStory(data.transformedStory);
+      setSurveyResponses(Array(15).fill(null));
+      setSurveyResult(null);
+      setSurveyError(null);
     } catch (err) {
       setTransformError(err.message || String(err));
     } finally {
       setTransforming(false);
+    }
+  };
+
+  const submitSurvey = async () => {
+    if (!selectedStory || !transformedStory) return;
+
+    const missing = surveyResponses.some((value) => value === null || Number.isNaN(Number(value)));
+    if (missing) {
+      setSurveyError('Please answer every question before submitting the survey.');
+      return;
+    }
+
+    setSurveySubmitting(true);
+    setSurveyError(null);
+
+    try {
+      const response = await fetch(`${API}/stories/${selectedStory.storyId}/narrative-transportation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responses: surveyResponses.map((value) => Number(value)) }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.detail || data?.title || 'Failed to save survey responses');
+      }
+
+      const data = await response.json();
+      setSurveyResult({
+        total: data.narrativeTransportationScore,
+        average: data.average,
+      });
+    } catch (err) {
+      setSurveyError(err.message || String(err));
+    } finally {
+      setSurveySubmitting(false);
     }
   };
 
@@ -218,6 +294,83 @@ export default function OfficeStoryView() {
                 {transformedStory || storyText || 'This story does not yet have content to display.'}
               </p>
             </div>
+
+            {transformedStory && (
+              <div style={{
+                marginTop: 24,
+                backgroundColor: '#ffffff',
+                border: `1px solid ${selectedOffice.accent}`,
+                borderRadius: 12,
+                padding: 20,
+              }}>
+                <h3 style={{ margin: '0 0 16px', color: '#111827' }}>Narrative Transportation Survey</h3>
+                <p style={{ margin: '0 0 20px', color: '#4b5563' }}>
+                  After reading the transformed story, rate how strongly each statement reflects your experience.
+                </p>
+
+                {surveyResult ? (
+                  <div style={{
+                    backgroundColor: '#f5f3ff',
+                    borderRadius: 8,
+                    padding: 16,
+                    border: `1px solid ${selectedOffice.accent}`,
+                  }}>
+                    <p style={{ margin: 0, fontWeight: 700, color: '#111827' }}>
+                      Score: {surveyResult.total}/105
+                    </p>
+                    <p style={{ margin: '8px 0 0', color: '#374151' }}>
+                      Average: {surveyResult.average.toFixed(2)}/7
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    {narrativeTransportationItems.map((item, index) => (
+                      <div key={item} style={{ marginBottom: 18, paddingBottom: 12, borderBottom: '1px solid #e5e7eb' }}>
+                        <p style={{ margin: '0 0 8px', color: '#111827', lineHeight: 1.5 }}>
+                          {index + 1}. {item}
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {[1, 2, 3, 4, 5, 6, 7].map((value) => (
+                            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: '#374151' }}>
+                              <input
+                                type="radio"
+                                name={`transport-${index}`}
+                                value={value}
+                                checked={surveyResponses[index] === value}
+                                onChange={(event) => handleSurveyResponse(index, event.target.value)}
+                              />
+                              {value}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+
+                    {surveyError && (
+                      <p role="alert" style={{ color: '#b91c1c', marginTop: 16 }}>{surveyError}</p>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={submitSurvey}
+                      disabled={surveySubmitting}
+                      style={{
+                        marginTop: 12,
+                        backgroundColor: surveySubmitting ? '#9ca3af' : selectedOffice.accent,
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '10px 16px',
+                        cursor: surveySubmitting ? 'not-allowed' : 'pointer',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {surveySubmitting ? 'Submitting survey...' : 'Submit survey'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </article>
       ) : (
