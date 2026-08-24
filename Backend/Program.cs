@@ -121,25 +121,6 @@ app.UseHttpsRedirection();
 app.UseCors("AllowReact");
 // -------------------------------------
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
 // Genres endpoint
 app.MapGet("/genres", async (AppDbContext db) =>
     await db.StoryGenres.Select(g => new { id = g.StoryGenreId, name = g.Name }).ToListAsync());
@@ -754,8 +735,3 @@ record NarrativeTransportationSurveyRequest(
 record FeedbackInsight(string Category, string Label, double Average, int EvaluationCount, string? Guidance);
 
 record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
