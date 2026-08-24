@@ -86,6 +86,9 @@ export default function OfficeStoryView() {
   const [surveySubmitting, setSurveySubmitting] = useState(false);
   const [surveyError, setSurveyError] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
+  const [feedbackInsights, setFeedbackInsights] = useState([]);
+  const [promotingInsight, setPromotingInsight] = useState(null);
+  const [promotedInsights, setPromotedInsights] = useState([]);
   const { showQuotaMessage } = useQuotaMessage();
 
   useEffect(() => {
@@ -132,6 +135,7 @@ export default function OfficeStoryView() {
     setSurveyResponses(Array(15).fill(null));
     setSurveyError(null);
     setSurveyResult(null);
+    setFeedbackInsights([]);
   };
 
   const selectOffice = (officeId) => {
@@ -142,6 +146,7 @@ export default function OfficeStoryView() {
     setSurveyResponses(Array(15).fill(null));
     setSurveyError(null);
     setSurveyResult(null);
+    setFeedbackInsights([]);
   };
 
   const handleSurveyResponse = (index, value) => {
@@ -229,10 +234,31 @@ export default function OfficeStoryView() {
         total: data.narrativeTransportationScore,
         average: data.average,
       });
+      const insightsResponse = await fetch(`${API}/feedback-insights`);
+      if (insightsResponse.ok) {
+        setFeedbackInsights(await insightsResponse.json());
+      }
     } catch (err) {
       setSurveyError(err.message || String(err));
     } finally {
       setSurveySubmitting(false);
+    }
+  };
+
+  const promoteInsight = async (insight) => {
+    setPromotingInsight(insight.category);
+    setSurveyError(null);
+    try {
+      const response = await fetch(`${API}/feedback-insights/${insight.category}/knowledge`, { method: 'POST' });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'Failed to save feedback guidance');
+      }
+      setPromotedInsights((current) => [...current, insight.category]);
+    } catch (err) {
+      setSurveyError(err.message || String(err));
+    } finally {
+      setPromotingInsight(null);
     }
   };
 
@@ -388,6 +414,31 @@ export default function OfficeStoryView() {
                         Attention drift was high ({surveyResponses[6]}/7). Consider tightening pacing,
                         removing repetition, or strengthening narrative tension.
                       </p>
+                    )}
+                    {feedbackInsights.length > 0 && (
+                      <div style={{ marginTop: 20, borderTop: '1px solid #fed7aa', paddingTop: 16 }}>
+                        <h4 style={{ margin: '0 0 8px', color: '#111827' }}>Repeated improvement patterns</h4>
+                        <p style={{ margin: '0 0 12px', color: '#374151' }}>
+                          These patterns appeared in at least two submitted evaluations and can be curated into the Knowledge Base.
+                        </p>
+                        {feedbackInsights.map((insight) => (
+                          <div key={insight.category} style={{ marginBottom: 12 }}>
+                            <p style={{ margin: '0 0 6px', color: '#374151' }}>
+                              <strong>{insight.label}</strong> ({insight.average}/7 across {insight.evaluationCount} evaluations): {insight.guidance}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => promoteInsight(insight)}
+                              disabled={promotingInsight === insight.category || promotedInsights.includes(insight.category)}
+                              style={{ padding: '6px 10px' }}
+                            >
+                              {promotedInsights.includes(insight.category)
+                                ? 'Saved to Knowledge Base'
+                                : promotingInsight === insight.category ? 'Saving...' : 'Save guidance'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ) : (

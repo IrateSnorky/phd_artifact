@@ -260,6 +260,43 @@ app.MapGet("/stories/{id}/narrative-transportation", async (int id, AppDbContext
         })
         .ToListAsync());
 
+app.MapGet("/feedback-insights", async (AppDbContext db) =>
+{
+    var evaluations = await db.NarrativeTransportationEvaluations
+        .Select(e => new { e.ResponsesJson, e.AdjustedResponsesJson })
+        .ToListAsync();
+
+    return Results.Ok(BuildFeedbackInsights(evaluations));
+});
+
+app.MapPost("/feedback-insights/{category}/knowledge", async (string category, AppDbContext db) =>
+{
+    var evaluations = await db.NarrativeTransportationEvaluations
+        .Select(e => new { e.ResponsesJson, e.AdjustedResponsesJson })
+        .ToListAsync();
+    var insight = BuildFeedbackInsights(evaluations)
+        .FirstOrDefault(i => string.Equals(i.Category, category, StringComparison.OrdinalIgnoreCase));
+    if (insight is null) return Results.NotFound("No repeated improvement pattern exists for this category.");
+
+    var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+    if (string.IsNullOrEmpty(apiKey)) return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+
+    using var httpClient = new HttpClient();
+    var embedding = await GetEmbeddingAsync(httpClient, apiKey, insight.Guidance);
+    if (embedding is null) return Results.BadRequest("Failed to generate embedding for the feedback guidance");
+
+    var chunk = new KnowledgeChunk
+    {
+        Content = insight.Guidance,
+        Source = $"Narrative transportation feedback ({insight.EvaluationCount} evaluations)",
+        AlwaysInclude = false,
+        Embedding = System.Text.Json.JsonSerializer.Serialize(embedding),
+    };
+    db.KnowledgeChunks.Add(chunk);
+    await db.SaveChangesAsync();
+    return Results.Created($"/knowledge/{chunk.KnowledgeChunkId}", new { id = chunk.KnowledgeChunkId, content = chunk.Content });
+});
+
 app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, AppDbContext db) =>
 {
     var story = await db.Stories.FindAsync(id);
@@ -655,6 +692,37 @@ static async Task<int?> EvaluateNarrativeTransportationScoreAsync(HttpClient cli
     return Math.Clamp(total, 9, 63);
 }
 
+static IReadOnlyList<FeedbackInsight> BuildFeedbackInsights(IEnumerable<dynamic> evaluations)
+{
+    var definitions = new[]
+    {
+        (Category: "visualization", Label: "Visualization", ItemIndex: 0, Guidance: "Make the setting and events easier to picture with concrete locations, sensory details, and observable actions."),
+        (Category: "involvement", Label: "Mental involvement", ItemIndex: 1, Guidance: "Strengthen the protagonist's goal, conflict, and stakes so the reader has a stronger reason to stay mentally involved."),
+        (Category: "emotion", Label: "Emotional impact", ItemIndex: 2, Guidance: "Give important events clearer emotional consequences and show how the characters react to them."),
+        (Category: "characters", Label: "Character imagery", ItemIndex: 4, Guidance: "Give characters distinctive traits, behavior, and dialogue that make them easier to visualize."),
+        (Category: "suspense", Label: "Narrative curiosity", ItemIndex: 5, Guidance: "Create stronger unanswered questions and forward momentum so readers want to discover what happens next."),
+        (Category: "attention-drift", Label: "Attention drift", ItemIndex: 6, Guidance: "Tighten pacing, remove repetition, and strengthen narrative tension where the story slows down."),
+        (Category: "relevance", Label: "Everyday relevance", ItemIndex: 7, Guidance: "Connect the office setting to familiar workplace experiences, decisions, and consequences."),
+        (Category: "perspective", Label: "Perspective change", ItemIndex: 8, Guidance: "Make the story's insight or change in perspective clearer through the conflict and resolution."),
+    };
+    var parsed = evaluations.Select(e => new
+    {
+        Responses = System.Text.Json.JsonSerializer.Deserialize<int[]>(e.ResponsesJson) ?? Array.Empty<int>(),
+        Adjusted = System.Text.Json.JsonSerializer.Deserialize<int[]>(e.AdjustedResponsesJson) ?? Array.Empty<int>(),
+    }).Where(e => e.Responses.Length == 15 && e.Adjusted.Length == 15).ToList();
+
+    return definitions
+        .Select(definition =>
+        {
+            var values = parsed.Select(e => definition.ItemIndex == 6 ? e.Responses[6] : e.Adjusted[definition.ItemIndex]).ToList();
+            var average = values.Count == 0 ? 0 : values.Select(value => (double)value).Average();
+            var repeatedPattern = values.Count >= 2 && (definition.ItemIndex == 6 ? average >= 5 : average < 4);
+            return new FeedbackInsight(definition.Category, definition.Label, Math.Round(average, 2), values.Count, repeatedPattern ? definition.Guidance : null);
+        })
+        .Where(insight => insight.Guidance is not null)
+        .ToList();
+}
+
 static float[] DeserializeEmbedding(string? json) =>
     string.IsNullOrEmpty(json) ? Array.Empty<float>() : System.Text.Json.JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>();
 
@@ -682,6 +750,8 @@ record NarrativeTransportationSurveyRequest(
     string OfficeName,
     string OfficeDescription,
     string StoryVersion);
+
+record FeedbackInsight(string Category, string Label, double Average, int EvaluationCount, string? Guidance);
 
 record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
 
