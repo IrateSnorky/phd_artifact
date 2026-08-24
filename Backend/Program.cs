@@ -88,12 +88,24 @@ using (var scope = app.Services.CreateScope())
         );
         """);
 
-    if (!db.StoryGenres.Any())
+    var defaultGenres = new[]
     {
-        db.StoryGenres.AddRange(new[] {
-            new StoryGenre { StoryGenreId = 1, Name = "Science Fiction" },
-            new StoryGenre { StoryGenreId = 2, Name = "Historical Fiction" }
-        });
+        new StoryGenre { StoryGenreId = 1, Name = "Science Fiction" },
+        new StoryGenre { StoryGenreId = 2, Name = "Historical Fiction" },
+        new StoryGenre { StoryGenreId = 3, Name = "Mystery" },
+        new StoryGenre { StoryGenreId = 4, Name = "Fantasy" },
+        new StoryGenre { StoryGenreId = 5, Name = "Horror" },
+        new StoryGenre { StoryGenreId = 6, Name = "Dystopian" }
+    };
+    foreach (var genre in defaultGenres)
+    {
+        if (!db.StoryGenres.Any(existing => existing.StoryGenreId == genre.StoryGenreId))
+        {
+            db.StoryGenres.Add(genre);
+        }
+    }
+    if (db.ChangeTracker.HasChanges())
+    {
         db.SaveChanges();
     }
 }

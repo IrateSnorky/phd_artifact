@@ -34,7 +34,11 @@ public class AppDbContext : DbContext
         // Optional: seed defaults (also handled manually at startup below)
         modelBuilder.Entity<StoryGenre>().HasData(
             new StoryGenre { StoryGenreId = 1, Name = "Science Fiction" },
-            new StoryGenre { StoryGenreId = 2, Name = "Historical Fiction" }
+            new StoryGenre { StoryGenreId = 2, Name = "Historical Fiction" },
+            new StoryGenre { StoryGenreId = 3, Name = "Mystery" },
+            new StoryGenre { StoryGenreId = 4, Name = "Fantasy" },
+            new StoryGenre { StoryGenreId = 5, Name = "Horror" },
+            new StoryGenre { StoryGenreId = 6, Name = "Dystopian" }
         );
     }
 }
