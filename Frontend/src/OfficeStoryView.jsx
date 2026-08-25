@@ -385,7 +385,7 @@ export default function OfficeStoryView() {
               }}>
                 <h3 style={{ margin: '0 0 16px', color: '#111827' }}>Narrative Transportation Survey</h3>
                 <p style={{ margin: '0 0 20px', color: '#4b5563' }}>
-                  After reading the transformed story, rate how strongly each statement reflects your experience.
+                  After reading the transformed story, rate your agreement with each statement on a scale of 1 (not at all) to 7 (very much).
                 </p>
 
                 {surveyResult ? (
