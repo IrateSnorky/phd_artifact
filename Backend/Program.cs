@@ -258,17 +258,18 @@ app.MapPost("/feedback-insights/{category}/knowledge", async (string category, A
     var insight = BuildFeedbackInsights(evaluations)
         .FirstOrDefault(i => string.Equals(i.Category, category, StringComparison.OrdinalIgnoreCase));
     if (insight is null) return Results.NotFound("No repeated improvement pattern exists for this category.");
+    var guidance = insight.Guidance!;
 
     var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
     if (string.IsNullOrEmpty(apiKey)) return Results.BadRequest("GEMINI_API_KEY environment variable not set");
 
     using var httpClient = new HttpClient();
-    var embedding = await GetEmbeddingAsync(httpClient, apiKey, insight.Guidance);
+    var embedding = await GetEmbeddingAsync(httpClient, apiKey, guidance);
     if (embedding is null) return Results.BadRequest("Failed to generate embedding for the feedback guidance");
 
     var chunk = new KnowledgeChunk
     {
-        Content = insight.Guidance,
+        Content = guidance,
         Source = $"Narrative transportation feedback ({insight.EvaluationCount} evaluations)",
         AlwaysInclude = false,
         Embedding = System.Text.Json.JsonSerializer.Serialize(embedding),
@@ -540,6 +541,9 @@ app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
                     .GetString();
 
                 story.GeneratedStory = generatedText;
+
+                if (string.IsNullOrWhiteSpace(generatedText))
+                    return Results.BadRequest("Gemini returned an empty generated story");
 
                 try
                 {

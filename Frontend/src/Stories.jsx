@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
@@ -207,7 +207,7 @@ export default function Stories() {
   const [editingGenre, setEditingGenre] = useState(null);
   const { showQuotaMessage } = useQuotaMessage();
 
-  const getErrorMessage = async (response) => {
+  const getErrorMessage = useCallback(async (response) => {
     const rawText = await response.text();
     let parsedText = rawText.trim();
 
@@ -219,31 +219,29 @@ export default function Stories() {
     }
 
     return parsedText || `Request failed (${response.status})`;
-  };
+  }, []);
 
-  const requestJson = async (path, options = {}) => {
+  const requestJson = useCallback(async (path, options = {}) => {
     const response = await fetch(`${API}${path}`, options);
     if (!response.ok) {
       throw new Error(await getErrorMessage(response));
     }
     return response.json();
-  };
+  }, [getErrorMessage]);
 
-  const fetchGenres = async () => {
+  const fetchGenres = useCallback(async () => {
     const data = await requestJson('/genres');
-    // oxlint-disable-next-line react/set-state-in-effect
     setGenres(data);
 
-    if (!newGenre && data.length) {
-      setNewGenre(String(data[0].id));
+    if (data.length) {
+      setNewGenre((currentGenre) => currentGenre || String(data[0].id));
     }
-  };
+  }, [requestJson]);
 
-  const fetchStories = async () => {
+  const fetchStories = useCallback(async () => {
     const data = await requestJson('/stories');
-    // oxlint-disable-next-line react/set-state-in-effect
     setStories(data);
-  };
+  }, [requestJson]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -259,7 +257,7 @@ export default function Stories() {
     };
 
     loadData();
-  }, []);
+  }, [fetchGenres, fetchStories]);
 
   const createStory = async () => {
     if (!newText.trim()) return;

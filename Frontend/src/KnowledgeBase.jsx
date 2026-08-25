@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
@@ -21,44 +21,44 @@ export default function KnowledgeBase() {
   const [editSaving, setEditSaving] = useState(false);
   const { showQuotaMessage } = useQuotaMessage();
 
-  const handleError = (err, setLocalError = setError) => {
+  const handleError = useCallback((err, setLocalError = setError) => {
     const message = err.message || String(err);
     if (isQuotaError(message)) {
       showQuotaMessage();
     } else {
       setLocalError(message);
     }
-  };
+  }, [showQuotaMessage]);
 
-  const fetchGenres = async () => {
+  const fetchGenres = useCallback(async () => {
     try {
       const res = await fetch(`${API}/genres`);
       if (!res.ok) throw new Error('Failed to load genres');
-      // oxlint-disable-next-line react/set-state-in-effect
       setGenres(await res.json());
     } catch (err) {
       handleError(err);
     }
-  };
+  }, [handleError]);
 
-  const fetchChunks = async () => {
+  const fetchChunks = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API}/knowledge`);
       if (!res.ok) throw new Error('Failed to load knowledge base');
-      // oxlint-disable-next-line react/set-state-in-effect
       setChunks(await res.json());
     } catch (err) {
       handleError(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [handleError]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
     fetchGenres();
+    // oxlint-disable-next-line react/set-state-in-effect
     fetchChunks();
-  }, []);
+  }, [fetchChunks, fetchGenres]);
 
   const addDocument = async () => {
     if (!content.trim()) return;
