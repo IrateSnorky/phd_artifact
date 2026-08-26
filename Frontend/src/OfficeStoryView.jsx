@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAIProvider } from './AIProviderContext';
 import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
@@ -90,6 +91,7 @@ export default function OfficeStoryView() {
   const [promotingInsight, setPromotingInsight] = useState(null);
   const [promotedInsights, setPromotedInsights] = useState([]);
   const { showQuotaMessage } = useQuotaMessage();
+  const { getHeaders } = useAIProvider();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -166,7 +168,7 @@ export default function OfficeStoryView() {
     try {
       const response = await fetch(`${API}/stories/${selectedStory.storyId}/transform-for-office`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           officeName: selectedOffice.name,
           officeDescription: selectedOffice.description,
@@ -214,7 +216,7 @@ export default function OfficeStoryView() {
     try {
       const response = await fetch(`${API}/stories/${selectedStory.storyId}/narrative-transportation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           responses: surveyResponses.map((value) => Number(value)),
           transformedStory,
@@ -249,7 +251,10 @@ export default function OfficeStoryView() {
     setPromotingInsight(insight.category);
     setSurveyError(null);
     try {
-      const response = await fetch(`${API}/feedback-insights/${insight.category}/knowledge`, { method: 'POST' });
+      const response = await fetch(`${API}/feedback-insights/${insight.category}/knowledge`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || 'Failed to save feedback guidance');
@@ -382,6 +387,7 @@ export default function OfficeStoryView() {
                 border: `1px solid ${selectedOffice.accent}`,
                 borderRadius: 12,
                 padding: 20,
+                textAlign: 'left',
               }}>
                 <h3 style={{ margin: '0 0 16px', color: '#111827' }}>Narrative Transportation Survey</h3>
                 <p style={{ margin: '0 0 20px', color: '#4b5563' }}>
@@ -448,7 +454,7 @@ export default function OfficeStoryView() {
                         <p style={{ margin: '0 0 8px', color: '#111827', lineHeight: 1.5 }}>
                           {index + 1}. {item}
                         </p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8 }}>
                           {[1, 2, 3, 4, 5, 6, 7].map((value) => (
                             <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: '#374151' }}>
                               <input

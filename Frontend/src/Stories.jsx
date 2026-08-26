@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAIProvider } from './AIProviderContext';
 import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
@@ -206,6 +207,7 @@ export default function Stories() {
   const [editingPrompt, setEditingPrompt] = useState('');
   const [editingGenre, setEditingGenre] = useState(null);
   const { showQuotaMessage } = useQuotaMessage();
+  const { getHeaders } = useAIProvider();
 
   const getErrorMessage = useCallback(async (response) => {
     const rawText = await response.text();
@@ -222,12 +224,15 @@ export default function Stories() {
   }, []);
 
   const requestJson = useCallback(async (path, options = {}) => {
-    const response = await fetch(`${API}${path}`, options);
+    const response = await fetch(`${API}${path}`, {
+      ...options,
+      headers: { ...getHeaders(), ...(options.headers || {}) },
+    });
     if (!response.ok) {
       throw new Error(await getErrorMessage(response));
     }
     return response.json();
-  }, [getErrorMessage]);
+  }, [getErrorMessage, getHeaders]);
 
   const fetchGenres = useCallback(async () => {
     const data = await requestJson('/genres');

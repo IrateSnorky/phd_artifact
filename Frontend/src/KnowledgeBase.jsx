@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAIProvider } from './AIProviderContext';
 import { isQuotaError, useQuotaMessage } from './QuotaContext';
 
 const API = 'http://localhost:5066';
@@ -20,6 +21,7 @@ export default function KnowledgeBase() {
   const [editGenreId, setEditGenreId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const { showQuotaMessage } = useQuotaMessage();
+  const { getHeaders } = useAIProvider();
 
   const handleError = useCallback((err, setLocalError = setError) => {
     const message = err.message || String(err);
@@ -67,7 +69,7 @@ export default function KnowledgeBase() {
     try {
       const res = await fetch(`${API}/knowledge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, source: source || null, alwaysInclude, genreId: genreId || null }),
       });
       if (!res.ok) {
@@ -112,7 +114,7 @@ export default function KnowledgeBase() {
     try {
       const res = await fetch(`${API}/knowledge/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: editContent,
           source: editSource || null,

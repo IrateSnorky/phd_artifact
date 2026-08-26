@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Backend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -250,7 +251,7 @@ app.MapGet("/feedback-insights", async (AppDbContext db) =>
     return Results.Ok(BuildFeedbackInsights(evaluations));
 });
 
-app.MapPost("/feedback-insights/{category}/knowledge", async (string category, AppDbContext db) =>
+app.MapPost("/feedback-insights/{category}/knowledge", async (string category, HttpRequest request, AppDbContext db) =>
 {
     var evaluations = await db.NarrativeTransportationEvaluations
         .Select(e => new { e.ResponsesJson, e.AdjustedResponsesJson })
@@ -260,11 +261,10 @@ app.MapPost("/feedback-insights/{category}/knowledge", async (string category, A
     if (insight is null) return Results.NotFound("No repeated improvement pattern exists for this category.");
     var guidance = insight.Guidance!;
 
-    var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    if (string.IsNullOrEmpty(apiKey)) return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+    if (!TryResolveProvider(request, out var provider, out var providerError))
+        return Results.BadRequest(providerError);
 
-    using var httpClient = new HttpClient();
-    var embedding = await GetEmbeddingAsync(httpClient, apiKey, guidance);
+    var embedding = await provider!.GetEmbeddingAsync(guidance);
     if (embedding is null) return Results.BadRequest("Failed to generate embedding for the feedback guidance");
 
     var chunk = new KnowledgeChunk
@@ -279,7 +279,7 @@ app.MapPost("/feedback-insights/{category}/knowledge", async (string category, A
     return Results.Created($"/knowledge/{chunk.KnowledgeChunkId}", new { id = chunk.KnowledgeChunkId, content = chunk.Content });
 });
 
-app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, AppDbContext db) =>
+app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTransformRequest input, HttpRequest request, AppDbContext db) =>
 {
     var story = await db.Stories.FindAsync(id);
     if (story is null) return Results.NotFound();
@@ -290,55 +290,21 @@ app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTran
     if (string.IsNullOrWhiteSpace(sourceStory))
         return Results.BadRequest("This story does not have content to transform");
 
-    var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    if (string.IsNullOrEmpty(geminiApiKey))
-        return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+    if (!TryResolveProvider(request, out var provider, out var providerError))
+        return Results.BadRequest(providerError);
 
-    var prompt = $"""
-        Rewrite the story below so its backdrop naturally takes place in this office setting.
-        Preserve the story's plot, characters, tone, and approximate length. Change only details
-        needed to make the setting feel integral to the story. Return only the rewritten story.
-
-        Office setting: {input.OfficeName}
-        Office context: {input.OfficeDescription}
-
-        Story:
-        {sourceStory}
-        """;
-
-    using var httpClient = new HttpClient();
-    var requestBody = new
+    try
     {
-        contents = new[]
-        {
-            new { parts = new[] { new { text = prompt } } }
-        }
-    };
-    var jsonContent = new StringContent(
-        System.Text.Json.JsonSerializer.Serialize(requestBody),
-        System.Text.Encoding.UTF8,
-        "application/json");
-    var response = await httpClient.PostAsync(
-        $"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={geminiApiKey}",
-        jsonContent);
-
-    if (!response.IsSuccessStatusCode)
-    {
-        var errorContent = await response.Content.ReadAsStringAsync();
-        return Results.BadRequest($"Gemini API error: {response.StatusCode} - {errorContent}");
+        var transformedStory = await provider!.TransformStoryAsync(
+            sourceStory,
+            input.OfficeName,
+            input.OfficeDescription);
+        return Results.Ok(new { transformedStory, storyVersion = Guid.NewGuid().ToString("N") });
     }
-
-    using var responseDocument = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-    var transformedStory = responseDocument.RootElement
-        .GetProperty("candidates")[0]
-        .GetProperty("content")
-        .GetProperty("parts")[0]
-        .GetProperty("text")
-        .GetString();
-
-    return string.IsNullOrWhiteSpace(transformedStory)
-        ? Results.BadRequest("Gemini returned an empty transformed story")
-        : Results.Ok(new { transformedStory, storyVersion = Guid.NewGuid().ToString("N") });
+    catch (Exception ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
 });
 
 // Knowledge base endpoints (used to retrieve reference context for story generation)
@@ -347,14 +313,13 @@ app.MapGet("/knowledge", async (AppDbContext db) =>
         .Select(k => new { id = k.KnowledgeChunkId, content = k.Content, source = k.Source, alwaysInclude = k.AlwaysInclude, genreId = k.GenreId, genreName = k.Genre != null ? k.Genre.Name : null })
         .ToListAsync());
 
-app.MapPost("/knowledge", async (KnowledgeRequest input, AppDbContext db) =>
+app.MapPost("/knowledge", async (KnowledgeRequest input, HttpRequest request, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(input.Content))
         return Results.BadRequest("Content is required");
 
-    var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    if (string.IsNullOrEmpty(geminiApiKey))
-        return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+    if (!TryResolveProvider(request, out var provider, out var providerError))
+        return Results.BadRequest(providerError);
 
     // Guardrails apply as whole documents (e.g. "no graphic violence"), so they are not
     // split into paragraphs the way retrievable reference lore is.
@@ -367,12 +332,11 @@ app.MapPost("/knowledge", async (KnowledgeRequest input, AppDbContext db) =>
             .ToList();
     if (paragraphs.Count == 0) paragraphs.Add(input.Content.Trim());
 
-    using var httpClient = new HttpClient();
     var created = new List<KnowledgeChunk>();
 
     foreach (var paragraph in paragraphs)
     {
-        var embedding = await GetEmbeddingAsync(httpClient, geminiApiKey, paragraph);
+        var embedding = await provider!.GetEmbeddingAsync(paragraph);
         if (embedding is null)
             return Results.BadRequest("Failed to generate embedding for one or more chunks");
 
@@ -392,7 +356,7 @@ app.MapPost("/knowledge", async (KnowledgeRequest input, AppDbContext db) =>
     return Results.Created("/knowledge", created.Select(c => new { id = c.KnowledgeChunkId, content = c.Content, source = c.Source, alwaysInclude = c.AlwaysInclude, genreId = c.GenreId }));
 });
 
-app.MapPut("/knowledge/{id}", async (int id, KnowledgeRequest input, AppDbContext db) =>
+app.MapPut("/knowledge/{id}", async (int id, KnowledgeRequest input, HttpRequest request, AppDbContext db) =>
 {
     var chunk = await db.KnowledgeChunks.FindAsync(id);
     if (chunk is null) return Results.NotFound();
@@ -404,12 +368,10 @@ app.MapPut("/knowledge/{id}", async (int id, KnowledgeRequest input, AppDbContex
 
     if (contentChanged)
     {
-        var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        if (string.IsNullOrEmpty(geminiApiKey))
-            return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+        if (!TryResolveProvider(request, out var provider, out var providerError))
+            return Results.BadRequest(providerError);
 
-        using var httpClient = new HttpClient();
-        var embedding = await GetEmbeddingAsync(httpClient, geminiApiKey, trimmedContent);
+        var embedding = await provider!.GetEmbeddingAsync(trimmedContent);
         if (embedding is null)
             return Results.BadRequest("Failed to generate embedding");
         chunk.Embedding = System.Text.Json.JsonSerializer.Serialize(embedding);
@@ -433,15 +395,14 @@ app.MapDelete("/knowledge/{id}", async (int id, AppDbContext db) =>
     return Results.NoContent();
 });
 
-// Generate story endpoint using Google Gemini, augmented with RAG over the knowledge base
-app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
+// Generate story endpoint using the selected AI provider, augmented with RAG over the knowledge base
+app.MapPost("/stories/{id}/generate", async (int id, HttpRequest request, AppDbContext db) =>
 {
     var story = await db.Stories.FindAsync(id);
     if (story is null) return Results.NotFound();
 
-    var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    if (string.IsNullOrEmpty(geminiApiKey))
-        return Results.BadRequest("GEMINI_API_KEY environment variable not set");
+    if (!TryResolveProvider(request, out var provider, out var providerError))
+        return Results.BadRequest(providerError);
 
     var genre = story.GenreId.HasValue ? (await db.StoryGenres.FindAsync(story.GenreId))?.Name : "General";
 
@@ -453,117 +414,49 @@ app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
 
     // Retrieve relevant (non-guardrail) knowledge base chunks for this story's prompt/instructions.
     var retrievedContext = "";
-    using (var embedClient = new HttpClient())
+    var queryText = $"{story.StoryPrompt} {story.StoryInstructions}".Trim();
+    var queryEmbedding = string.IsNullOrEmpty(queryText) ? null : await provider!.GetEmbeddingAsync(queryText);
+
+    if (queryEmbedding is not null)
     {
-        var queryText = $"{story.StoryPrompt} {story.StoryInstructions}".Trim();
-        var queryEmbedding = string.IsNullOrEmpty(queryText) ? null : await GetEmbeddingAsync(embedClient, geminiApiKey, queryText);
+        var chunks = await db.KnowledgeChunks.Where(k => !k.AlwaysInclude).ToListAsync();
+        var topMatches = chunks
+            .Select(c => new
+            {
+                Chunk = c,
+                Score = CosineSimilarity(queryEmbedding, DeserializeEmbedding(c.Embedding))
+            })
+            .Where(x => x.Score > 0.5)
+            .OrderByDescending(x => x.Score)
+            .Take(3)
+            .ToList();
 
-        if (queryEmbedding is not null)
-        {
-            var chunks = await db.KnowledgeChunks.Where(k => !k.AlwaysInclude).ToListAsync();
-            var topMatches = chunks
-                .Select(c => new
-                {
-                    Chunk = c,
-                    Score = CosineSimilarity(queryEmbedding, DeserializeEmbedding(c.Embedding))
-                })
-                .Where(x => x.Score > 0.5)
-                .OrderByDescending(x => x.Score)
-                .Take(3)
-                .ToList();
-
-            if (topMatches.Count > 0)
-                retrievedContext = string.Join("\n---\n", topMatches.Select(x => x.Chunk.Content));
-        }
+        if (topMatches.Count > 0)
+            retrievedContext = string.Join("\n---\n", topMatches.Select(x => x.Chunk.Content));
     }
-
-    var promptBuilder = new System.Text.StringBuilder();
-    if (guardrails.Count > 0)
-    {
-        promptBuilder.AppendLine("Story guardrails (must always be followed, no exceptions):");
-        foreach (var guardrail in guardrails)
-            promptBuilder.AppendLine($"- {guardrail}");
-        promptBuilder.AppendLine();
-    }
-    promptBuilder.AppendLine("Generate a single paragraph story (2-3 sentences) based on these inputs:");
-    promptBuilder.AppendLine($"- Genre: {genre}");
-    promptBuilder.AppendLine($"- Instructions: {story.StoryInstructions}");
-    promptBuilder.AppendLine($"- Prompt: {story.StoryPrompt}");
-    if (!string.IsNullOrEmpty(retrievedContext))
-    {
-        promptBuilder.AppendLine();
-        promptBuilder.AppendLine("Relevant reference context (use for consistency if applicable):");
-        promptBuilder.AppendLine(retrievedContext);
-    }
-    promptBuilder.AppendLine();
-    promptBuilder.AppendLine("Write only the story paragraph, nothing else.");
-
-    var prompt = promptBuilder.ToString();
 
     try
     {
-        using (var httpClient = new HttpClient())
+        var generatedText = await provider!.GenerateStoryAsync(
+            story.StoryPrompt ?? string.Empty,
+            story.StoryInstructions ?? string.Empty,
+            guardrails,
+            retrievedContext,
+            genre ?? "General");
+
+        story.GeneratedStory = generatedText;
+        try
         {
-            var requestBody = new
-            {
-                contents = new[]
-                {
-                    new { parts = new[] { new { text = prompt } } }
-                }
-            };
-
-            var jsonContent = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(requestBody),
-                System.Text.Encoding.UTF8,
-                "application/json"
-            );
-
-            var response = await httpClient.PostAsync(
-                $"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={geminiApiKey}",
-                jsonContent
-            );
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                return Results.BadRequest($"Gemini API error: {response.StatusCode} - {errorContent}");
-            }
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            using (var doc = System.Text.Json.JsonDocument.Parse(responseContent))
-            {
-                var root = doc.RootElement;
-                var generatedText = root
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
-
-                story.GeneratedStory = generatedText;
-
-                if (string.IsNullOrWhiteSpace(generatedText))
-                    return Results.BadRequest("Gemini returned an empty generated story");
-
-                try
-                {
-                    using var scoreClient = new HttpClient();
-                    story.NarrativeTransportationScore = await EvaluateNarrativeTransportationScoreAsync(
-                        scoreClient,
-                        geminiApiKey,
-                        generatedText
-                    );
-                }
-                catch
-                {
-                    story.NarrativeTransportationScore = null;
-                }
-
-                await db.SaveChangesAsync();
-
-                return Results.Ok(new { generatedStory = generatedText, narrativeTransportationScore = story.NarrativeTransportationScore });
-            }
+            story.NarrativeTransportationScore =
+                await provider.EvaluateNarrativeTransportationScoreAsync(generatedText);
         }
+        catch
+        {
+            story.NarrativeTransportationScore = null;
+        }
+
+        await db.SaveChangesAsync();
+        return Results.Ok(new { generatedStory = generatedText, narrativeTransportationScore = story.NarrativeTransportationScore });
     }
     catch (Exception ex)
     {
@@ -573,108 +466,32 @@ app.MapPost("/stories/{id}/generate", async (int id, AppDbContext db) =>
 
 app.Run();
 
-// Calls Gemini's embedding model to convert text into a vector for similarity search.
-static async Task<float[]?> GetEmbeddingAsync(HttpClient client, string apiKey, string text)
+static bool TryResolveProvider(HttpRequest request, out IAIProvider? provider, out string error)
 {
-    var requestBody = new
+    var requestedProvider = request.Headers["X-AI-Provider"].FirstOrDefault()?.Trim().ToLowerInvariant();
+    requestedProvider = string.IsNullOrEmpty(requestedProvider) ? "gemini" : requestedProvider;
+
+    if (requestedProvider is not ("gemini" or "cohere"))
     {
-        content = new { parts = new[] { new { text } } }
-    };
+        provider = null;
+        error = "Unsupported AI provider. Choose Gemini or Cohere.";
+        return false;
+    }
 
-    var jsonContent = new StringContent(
-        System.Text.Json.JsonSerializer.Serialize(requestBody),
-        System.Text.Encoding.UTF8,
-        "application/json"
-    );
-
-    var response = await client.PostAsync(
-        $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}",
-        jsonContent
-    );
-
-    if (!response.IsSuccessStatusCode) return null;
-
-    var responseContent = await response.Content.ReadAsStringAsync();
-    using var doc = System.Text.Json.JsonDocument.Parse(responseContent);
-    var values = doc.RootElement.GetProperty("embedding").GetProperty("values");
-    return values.EnumerateArray().Select(v => v.GetSingle()).ToArray();
-}
-
-static async Task<int?> EvaluateNarrativeTransportationScoreAsync(HttpClient client, string apiKey, string storyText)
-{
-    // This implements the 1-7 Likert scale described by the user.
-    // The reverse-scored item is the mind-wandering item, which is converted to a positive score before summing.
-    var items = new[]
+    var environmentVariable = requestedProvider == "gemini" ? "GEMINI_API_KEY" : "COHERE_API_KEY";
+    var apiKey = Environment.GetEnvironmentVariable(environmentVariable);
+    if (string.IsNullOrWhiteSpace(apiKey))
     {
-        "While I was reading the narrative, I could easily picture the events taking place.",
-        "I was mentally involved in the narrative while reading it.",
-        "The narrative affected me emotionally.",
-        "I found myself thinking of ways the narrative could have turned out differently.",
-        "While reading the narrative I had a vivid image of the characters.",
-        "I wanted to learn how the narrative ended.",
-        "I found my mind wandering while reading the narrative.",
-        "The events in the narrative are relevant to my everyday life.",
-        "The narrative changed my understanding of things."
-    };
+        provider = null;
+        error = $"{environmentVariable} environment variable is not set for the selected AI provider.";
+        return false;
+    }
 
-    var prompt = string.Join(
-        Environment.NewLine,
-        "Evaluate the following story using the Narrative Transportation scale.",
-        "Score each of these statements from 1 (not at all) to 7 (very much):",
-        string.Empty,
-        string.Join(Environment.NewLine, items.Select((item, index) => $"{index + 1}. {item}")),
-        string.Empty,
-        "Important: For the reverse-scored item (\"I found my mind wandering while reading the narrative.\"), compute the score as 8 - response so that higher values mean greater transportation.",
-        "Return only valid JSON in this exact shape:",
-        "{ \"total\": 0, \"average\": 0.0 }",
-        "Use the total score across all items, with total between 9 and 63, and average between 1.0 and 7.0.",
-        string.Empty,
-        "Story:",
-        storyText
-    );
-
-    var requestBody = new
-    {
-        contents = new[]
-        {
-            new { parts = new[] { new { text = prompt } } }
-        }
-    };
-
-    var jsonContent = new StringContent(
-        System.Text.Json.JsonSerializer.Serialize(requestBody),
-        System.Text.Encoding.UTF8,
-        "application/json"
-    );
-
-    var response = await client.PostAsync(
-        $"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={apiKey}",
-        jsonContent
-    );
-
-    if (!response.IsSuccessStatusCode) return null;
-
-    var responseContent = await response.Content.ReadAsStringAsync();
-    using var doc = System.Text.Json.JsonDocument.Parse(responseContent);
-    var rawText = doc.RootElement
-        .GetProperty("candidates")[0]
-        .GetProperty("content")
-        .GetProperty("parts")[0]
-        .GetProperty("text")
-        .GetString();
-
-    if (string.IsNullOrWhiteSpace(rawText)) return null;
-
-    var jsonStart = rawText.IndexOf('{');
-    var jsonEnd = rawText.LastIndexOf('}');
-    if (jsonStart < 0 || jsonEnd < jsonStart) return null;
-
-    var json = rawText.Substring(jsonStart, jsonEnd - jsonStart + 1);
-    using var scoreDoc = System.Text.Json.JsonDocument.Parse(json);
-    if (!scoreDoc.RootElement.TryGetProperty("total", out var totalElement)) return null;
-
-    var total = totalElement.GetInt32();
-    return Math.Clamp(total, 9, 63);
+    provider = requestedProvider == "gemini"
+        ? new GeminiProvider(apiKey)
+        : new CohereProvider(apiKey);
+    error = string.Empty;
+    return true;
 }
 
 static IReadOnlyList<FeedbackInsight> BuildFeedbackInsights(IEnumerable<dynamic> evaluations)

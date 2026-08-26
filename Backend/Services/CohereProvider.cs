@@ -11,15 +11,15 @@ public class CohereProvider : IAIProvider
 {
     private readonly string _apiKey;
     private readonly HttpClient _httpClient;
-    private const string BaseUrl = "https://api.cohere.ai";
-    private const string GenerationModel = "command-r-plus";
+    private const string BaseUrl = "https://api.cohere.com";
+    private const string GenerationModel = "command-r-plus-08-2024";
     private const string EmbeddingModel = "embed-english-v3.0";
 
     public CohereProvider(string apiKey)
     {
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
         _httpClient = new HttpClient();
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer " + _apiKey);
     }
 
     public async Task<string> GenerateStoryAsync(
@@ -94,7 +94,7 @@ public class CohereProvider : IAIProvider
             "application/json");
 
         var response = await _httpClient.PostAsync(
-            $"{BaseUrl}/v1/embed",
+            $"{BaseUrl}/v2/embed",
             jsonContent);
 
         if (!response.IsSuccessStatusCode) return null;
@@ -103,9 +103,19 @@ public class CohereProvider : IAIProvider
         using var doc = JsonDocument.Parse(responseContent);
         
         var embeddings = doc.RootElement.GetProperty("embeddings");
-        if (embeddings.GetArrayLength() == 0) return null;
+        JsonElement firstEmbedding;
+        if (embeddings.ValueKind == JsonValueKind.Object &&
+            embeddings.TryGetProperty("float", out var floatEmbeddings))
+        {
+            if (floatEmbeddings.GetArrayLength() == 0) return null;
+            firstEmbedding = floatEmbeddings[0];
+        }
+        else
+        {
+            if (embeddings.GetArrayLength() == 0) return null;
+            firstEmbedding = embeddings[0];
+        }
 
-        var firstEmbedding = embeddings[0];
         return firstEmbedding.EnumerateArray()
             .Select(v => v.GetSingle())
             .ToArray();
@@ -163,11 +173,9 @@ public class CohereProvider : IAIProvider
         var requestBody = new
         {
             model = GenerationModel,
-            prompt = prompt,
+            messages = new[] { new { role = "user", content = prompt } },
             max_tokens = 1024,
-            temperature = 0.8,
-            k = 0,
-            p = 0.75
+            temperature = 0.8
         };
 
         var jsonContent = new StringContent(
@@ -176,7 +184,7 @@ public class CohereProvider : IAIProvider
             "application/json");
 
         var response = await _httpClient.PostAsync(
-            $"{BaseUrl}/v1/generate",
+            $"{BaseUrl}/v2/chat",
             jsonContent);
 
         if (!response.IsSuccessStatusCode)
@@ -188,16 +196,22 @@ public class CohereProvider : IAIProvider
         var responseContent = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(responseContent);
         
-        var generations = doc.RootElement.GetProperty("generations");
-        if (generations.GetArrayLength() == 0)
-            throw new InvalidOperationException("Cohere returned no generations");
-
-        var generatedText = generations[0]
-            .GetProperty("text")
-            .GetString();
+        string? generatedText = null;
+        if (doc.RootElement.TryGetProperty("message", out var message) &&
+            message.TryGetProperty("content", out var content))
+        {
+            generatedText = content.ValueKind == JsonValueKind.Array && content.GetArrayLength() > 0
+                ? content[0].GetProperty("text").GetString()
+                : content.GetString();
+        }
+        else if (doc.RootElement.TryGetProperty("generations", out var generations) &&
+                 generations.GetArrayLength() > 0)
+        {
+            generatedText = generations[0].GetProperty("text").GetString();
+        }
 
         if (string.IsNullOrWhiteSpace(generatedText))
-            throw new InvalidOperationException("Cohere returned an empty response");
+            throw new InvalidOperationException("Cohere returned no generated text");
 
         return generatedText;
     }

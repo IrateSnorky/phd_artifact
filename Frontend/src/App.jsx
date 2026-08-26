@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AIProviderProvider, useAIProvider } from './AIProviderContext';
 import KnowledgeBase from './KnowledgeBase';
 import OfficeStoryView from './OfficeStoryView';
 import { QuotaProvider } from './QuotaContext';
@@ -35,7 +36,8 @@ function App() {
   const [page, setPage] = useState('stories');
 
   return (
-    <div style={styles.app}>
+    <AIProviderProvider>
+      <div style={styles.app}>
       <header style={styles.header}>
         <div style={styles.headerInner}>
           <h1 style={styles.title}>StoryGen</h1>
@@ -58,6 +60,7 @@ function App() {
               );
             })}
           </nav>
+          <ProviderSelector />
         </div>
       </header>
 
@@ -68,7 +71,27 @@ function App() {
           {page === 'knowledge-base' && <KnowledgeBase />}
         </main>
       </QuotaProvider>
-    </div>
+      </div>
+    </AIProviderProvider>
+  );
+}
+
+function ProviderSelector() {
+  const { provider, setProvider } = useAIProvider();
+
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ffffff', fontWeight: 600 }}>
+      AI provider
+      <select
+        aria-label="AI provider"
+        value={provider}
+        onChange={(event) => setProvider(event.target.value)}
+        style={{ padding: '6px 8px', borderRadius: 4, border: 'none', color: '#111827' }}
+      >
+        <option value="gemini">Gemini</option>
+        <option value="cohere">Cohere</option>
+      </select>
+    </label>
   );
 }
 
