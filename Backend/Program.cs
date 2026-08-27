@@ -179,47 +179,43 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
         return Results.BadRequest("Transformed story, office name, and story version are required.");
 
     var responses = request.Responses ?? Array.Empty<int>();
-    if (responses.Length != 15)
-        return Results.BadRequest("Exactly 15 response values are required.");
-
-    if (responses.Any(r => r < 1 || r > 7))
-        return Results.BadRequest("Each response must be between 1 and 7.");
-
-    var adjustedResponses = new int[responses.Length];
-    var total = 0;
-    for (var i = 0; i < responses.Length; i++)
+    NarrativeTransportationScore score;
+    try
     {
-        adjustedResponses[i] = i == 6 ? 8 - responses[i] : responses[i];
-        total += adjustedResponses[i];
+        score = NarrativeTransportationScoring.Calculate(responses);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ex.Message);
     }
 
-    story.NarrativeTransportationScore = total;
+    story.NarrativeTransportationScore = score.Total;
     var evaluation = new NarrativeTransportationEvaluation
     {
         StoryId = story.StoryId,
         ResponsesJson = System.Text.Json.JsonSerializer.Serialize(responses),
-        AdjustedResponsesJson = System.Text.Json.JsonSerializer.Serialize(adjustedResponses),
+        AdjustedResponsesJson = System.Text.Json.JsonSerializer.Serialize(score.AdjustedResponses),
         TransformedStory = request.TransformedStory,
         OfficeName = request.OfficeName,
         OfficeDescription = request.OfficeDescription,
         SubmittedAtUtc = DateTime.UtcNow,
         StoryVersion = request.StoryVersion,
-        TotalScore = total,
+        TotalScore = score.Total,
     };
     db.NarrativeTransportationEvaluations.Add(evaluation);
     await db.SaveChangesAsync();
 
     return Results.Ok(new
     {
-        narrativeTransportationScore = total,
-        average = total / 15.0,
+        narrativeTransportationScore = score.Total,
+        average = score.Total / 15.0,
         maxScore = 105,
         itemCount = 15,
         evaluationId = evaluation.NarrativeTransportationEvaluationId,
         storyVersion = evaluation.StoryVersion,
         submittedAtUtc = evaluation.SubmittedAtUtc,
         responses,
-        adjustedResponses,
+        adjustedResponses = score.AdjustedResponses,
     });
 });
 
@@ -248,7 +244,8 @@ app.MapGet("/feedback-insights", async (AppDbContext db) =>
         .Select(e => new { e.ResponsesJson, e.AdjustedResponsesJson })
         .ToListAsync();
 
-    return Results.Ok(BuildFeedbackInsights(evaluations));
+    return Results.Ok(FeedbackInsightService.Build(
+        evaluations.Select(e => (e.ResponsesJson, e.AdjustedResponsesJson))));
 });
 
 app.MapPost("/feedback-insights/{category}/knowledge", async (string category, HttpRequest request, AppDbContext db) =>
@@ -256,7 +253,8 @@ app.MapPost("/feedback-insights/{category}/knowledge", async (string category, H
     var evaluations = await db.NarrativeTransportationEvaluations
         .Select(e => new { e.ResponsesJson, e.AdjustedResponsesJson })
         .ToListAsync();
-    var insight = BuildFeedbackInsights(evaluations)
+    var insight = FeedbackInsightService.Build(
+            evaluations.Select(e => (e.ResponsesJson, e.AdjustedResponsesJson)))
         .FirstOrDefault(i => string.Equals(i.Category, category, StringComparison.OrdinalIgnoreCase));
     if (insight is null) return Results.NotFound("No repeated improvement pattern exists for this category.");
     var guidance = insight.Guidance!;
@@ -494,37 +492,6 @@ static bool TryResolveProvider(HttpRequest request, out IAIProvider? provider, o
     return true;
 }
 
-static IReadOnlyList<FeedbackInsight> BuildFeedbackInsights(IEnumerable<dynamic> evaluations)
-{
-    var definitions = new[]
-    {
-        (Category: "visualization", Label: "Visualization", ItemIndex: 0, Guidance: "Make the setting and events easier to picture with concrete locations, sensory details, and observable actions."),
-        (Category: "involvement", Label: "Mental involvement", ItemIndex: 1, Guidance: "Strengthen the protagonist's goal, conflict, and stakes so the reader has a stronger reason to stay mentally involved."),
-        (Category: "emotion", Label: "Emotional impact", ItemIndex: 2, Guidance: "Give important events clearer emotional consequences and show how the characters react to them."),
-        (Category: "characters", Label: "Character imagery", ItemIndex: 4, Guidance: "Give characters distinctive traits, behavior, and dialogue that make them easier to visualize."),
-        (Category: "suspense", Label: "Narrative curiosity", ItemIndex: 5, Guidance: "Create stronger unanswered questions and forward momentum so readers want to discover what happens next."),
-        (Category: "attention-drift", Label: "Attention drift", ItemIndex: 6, Guidance: "Tighten pacing, remove repetition, and strengthen narrative tension where the story slows down."),
-        (Category: "relevance", Label: "Everyday relevance", ItemIndex: 7, Guidance: "Connect the office setting to familiar workplace experiences, decisions, and consequences."),
-        (Category: "perspective", Label: "Perspective change", ItemIndex: 8, Guidance: "Make the story's insight or change in perspective clearer through the conflict and resolution."),
-    };
-    var parsed = evaluations.Select(e => new
-    {
-        Responses = System.Text.Json.JsonSerializer.Deserialize<int[]>(e.ResponsesJson) ?? Array.Empty<int>(),
-        Adjusted = System.Text.Json.JsonSerializer.Deserialize<int[]>(e.AdjustedResponsesJson) ?? Array.Empty<int>(),
-    }).Where(e => e.Responses.Length == 15 && e.Adjusted.Length == 15).ToList();
-
-    return definitions
-        .Select(definition =>
-        {
-            var values = parsed.Select(e => definition.ItemIndex == 6 ? e.Responses[6] : e.Adjusted[definition.ItemIndex]).ToList();
-            var average = values.Count == 0 ? 0 : values.Select(value => (double)value).Average();
-            var repeatedPattern = values.Count >= 2 && (definition.ItemIndex == 6 ? average >= 5 : average < 4);
-            return new FeedbackInsight(definition.Category, definition.Label, Math.Round(average, 2), values.Count, repeatedPattern ? definition.Guidance : null);
-        })
-        .Where(insight => insight.Guidance is not null)
-        .ToList();
-}
-
 static float[] DeserializeEmbedding(string? json) =>
     string.IsNullOrEmpty(json) ? Array.Empty<float>() : System.Text.Json.JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>();
 
@@ -552,7 +519,5 @@ record NarrativeTransportationSurveyRequest(
     string OfficeName,
     string OfficeDescription,
     string StoryVersion);
-
-record FeedbackInsight(string Category, string Label, double Average, int EvaluationCount, string? Guidance);
 
 record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
