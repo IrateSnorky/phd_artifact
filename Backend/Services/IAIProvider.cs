@@ -25,6 +25,15 @@ public interface IAIProvider
         string officeDescription);
 
     /// <summary>
+    /// Improves a transformed story using temporary feedback-derived guardrails.
+    /// </summary>
+    Task<string> ImproveStoryAsync(
+        string currentStory,
+        List<string> guardrails,
+        string officeName,
+        string officeDescription);
+
+    /// <summary>
     /// Generates a vector embedding for semantic similarity search.
     /// </summary>
     Task<float[]?> GetEmbeddingAsync(string text);

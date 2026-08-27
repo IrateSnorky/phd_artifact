@@ -56,6 +56,8 @@ Office transformations require `GEMINI_API_KEY`. See [SETUP_GEMINI.md](SETUP_GEM
 | `DELETE` | `/stories/{id}` | Delete a story |
 | `POST` | `/stories/{id}/generate` | Generate a story using Gemini |
 | `POST` | `/stories/{id}/transform-for-office` | Transform a story for an office setting |
+| `POST` | `/stories/{id}/narrative-transportation` | Save narrative transportation survey responses |
+| `POST` | `/stories/{id}/improve-from-survey` | Regenerate a temporary transformed story using survey feedback guardrails |
 | `GET` | `/knowledge` | List knowledge-base chunks |
 | `POST` | `/knowledge` | Add knowledge-base content |
 | `PUT` | `/knowledge/{id}` | Update knowledge-base content |

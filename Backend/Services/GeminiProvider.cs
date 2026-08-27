@@ -72,6 +72,31 @@ public class GeminiProvider : IAIProvider
         return await CallGenerationApiAsync(prompt);
     }
 
+    public async Task<string> ImproveStoryAsync(
+        string currentStory,
+        List<string> guardrails,
+        string officeName,
+        string officeDescription)
+    {
+        var guardrailText = string.Join(Environment.NewLine, guardrails.Select(guardrail => $"- {guardrail}"));
+        var prompt = $"""
+            Improve the story below for reader engagement while preserving its plot, characters,
+            tone, office setting, and approximate length. Apply every improvement guardrail.
+            Return only the improved story.
+
+            Office setting: {officeName}
+            Office context: {officeDescription}
+
+            Improvement guardrails:
+            {guardrailText}
+
+            Story:
+            {currentStory}
+            """;
+
+        return await CallGenerationApiAsync(prompt);
+    }
+
     public async Task<float[]?> GetEmbeddingAsync(string text)
     {
         var requestBody = new

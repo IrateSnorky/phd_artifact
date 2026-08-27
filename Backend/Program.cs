@@ -219,6 +219,48 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
     });
 });
 
+app.MapPost("/stories/{id}/improve-from-survey", async (int id, NarrativeTransportationImprovementRequest request, HttpRequest httpRequest, AppDbContext db) =>
+{
+    var story = await db.Stories.FindAsync(id);
+    if (story is null) return Results.NotFound();
+    if (string.IsNullOrWhiteSpace(request.TransformedStory) ||
+        string.IsNullOrWhiteSpace(request.OfficeName) ||
+        string.IsNullOrWhiteSpace(request.StoryVersion))
+        return Results.BadRequest("Transformed story, office name, and story version are required.");
+
+    IReadOnlyList<string> guardrails;
+    try
+    {
+        guardrails = FeedbackInsightService.BuildImprovementGuardrails(request.Responses ?? []);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+
+    if (!TryResolveProvider(httpRequest, out var provider, out var providerError))
+        return Results.BadRequest(providerError);
+
+    try
+    {
+        var improvedStory = await provider!.ImproveStoryAsync(
+            request.TransformedStory,
+            guardrails.ToList(),
+            request.OfficeName,
+            request.OfficeDescription);
+        return Results.Ok(new
+        {
+            transformedStory = improvedStory,
+            storyVersion = Guid.NewGuid().ToString("N"),
+            guardrails,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest($"Error: {ex.Message}");
+    }
+});
+
 app.MapGet("/stories/{id}/narrative-transportation", async (int id, AppDbContext db) =>
     await db.NarrativeTransportationEvaluations
         .Where(e => e.StoryId == id)
@@ -514,6 +556,13 @@ static double CosineSimilarity(float[] a, float[] b)
 record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
 
 record NarrativeTransportationSurveyRequest(
+    int[] Responses,
+    string TransformedStory,
+    string OfficeName,
+    string OfficeDescription,
+    string StoryVersion);
+
+record NarrativeTransportationImprovementRequest(
     int[] Responses,
     string TransformedStory,
     string OfficeName,

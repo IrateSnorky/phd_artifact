@@ -85,6 +85,7 @@ export default function OfficeStoryView() {
   const [transformError, setTransformError] = useState(null);
   const [surveyResponses, setSurveyResponses] = useState(Array(15).fill(null));
   const [surveySubmitting, setSurveySubmitting] = useState(false);
+  const [improving, setImproving] = useState(false);
   const [surveyError, setSurveyError] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
   const [feedbackInsights, setFeedbackInsights] = useState([]);
@@ -240,10 +241,53 @@ export default function OfficeStoryView() {
       if (insightsResponse.ok) {
         setFeedbackInsights(await insightsResponse.json());
       }
+      setSurveyResult(null);
+      setImproving(true);
+      const improvementResponse = await fetch(`${API}/stories/${selectedStory.storyId}/improve-from-survey`, {
+        method: 'POST',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          responses: surveyResponses.map((value) => Number(value)),
+          transformedStory,
+          officeName: selectedOffice.name,
+          officeDescription: selectedOffice.description,
+          storyVersion,
+        }),
+      });
+      const improvementText = await improvementResponse.text();
+      let improvementData = null;
+      if (improvementText.trim()) {
+        try {
+          improvementData = JSON.parse(improvementText);
+        } catch {
+          if (!improvementResponse.ok) {
+            throw new Error(improvementText || 'The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
+          }
+          throw new Error(improvementText);
+        }
+      }
+      if (!improvementResponse.ok) {
+        const detail = improvementData?.detail || improvementData?.title || improvementData?.message;
+        throw new Error(detail || improvementText || 'The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
+      }
+      if (!improvementData?.transformedStory) {
+        throw new Error('The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
+      }
+      setTransformedStory(improvementData.transformedStory);
+      setStoryVersion(improvementData.storyVersion);
+      setSurveyResponses(Array(15).fill(null));
+      setSurveyResult(null);
+      setSurveyError(null);
     } catch (err) {
-      setSurveyError(err.message || String(err));
+      const message = err.message || String(err);
+      if (isQuotaError(message)) {
+        showQuotaMessage();
+      } else {
+        setSurveyError(message);
+      }
     } finally {
       setSurveySubmitting(false);
+      setImproving(false);
     }
   };
 
@@ -394,7 +438,9 @@ export default function OfficeStoryView() {
                   After reading the transformed story, rate your agreement with each statement on a scale of 1 (not at all) to 7 (very much).
                 </p>
 
-                {surveyResult ? (
+                {improving ? (
+                  <p>Improving story with your feedback...</p>
+                ) : surveyResult ? (
                   <div style={{
                     backgroundColor: '#fff3e6',
                     borderRadius: 8,

@@ -37,6 +37,28 @@ public class FeedbackInsightServiceTests
         Assert.Empty(FeedbackInsightService.Build(evaluations));
     }
 
+    [Fact]
+    public void BuildImprovementGuardrails_ReturnsGuidanceForLowScoresAndAttentionDrift()
+    {
+        var responses = Enumerable.Repeat(6, 15).ToArray();
+        responses[0] = 2;
+        responses[6] = 6;
+
+        var guardrails = FeedbackInsightService.BuildImprovementGuardrails(responses);
+
+        Assert.Contains(guardrails, guardrail => guardrail.Contains("setting and events easier to picture"));
+        Assert.Contains(guardrails, guardrail => guardrail.Contains("Tighten pacing"));
+    }
+
+    [Fact]
+    public void BuildImprovementGuardrails_RejectsInvalidResponseCount()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            FeedbackInsightService.BuildImprovementGuardrails(new[] { 1, 2 }));
+
+        Assert.Contains("Exactly 15", exception.Message);
+    }
+
     private static IEnumerable<(string ResponsesJson, string AdjustedResponsesJson)> CreateEvaluations(int responseValue)
     {
         var responses = Enumerable.Repeat(responseValue, 15).ToArray();

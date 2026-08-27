@@ -78,6 +78,29 @@ public class CohereProvider : IAIProvider
         return await CallGenerationApiAsync(prompt);
     }
 
+    public async Task<string> ImproveStoryAsync(
+        string currentStory,
+        List<string> guardrails,
+        string officeName,
+        string officeDescription)
+    {
+        var promptBuilder = new System.Text.StringBuilder();
+        promptBuilder.AppendLine("Improve the story below for reader engagement while preserving its plot, characters, tone, office setting, and approximate length.");
+        promptBuilder.AppendLine("Apply every improvement guardrail and return only the improved story.");
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine($"Office setting: {officeName}");
+        promptBuilder.AppendLine($"Office context: {officeDescription}");
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Improvement guardrails:");
+        foreach (var guardrail in guardrails)
+            promptBuilder.AppendLine($"- {guardrail}");
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Story:");
+        promptBuilder.AppendLine(currentStory);
+
+        return await CallGenerationApiAsync(promptBuilder.ToString());
+    }
+
     public async Task<float[]?> GetEmbeddingAsync(string text)
     {
         var requestBody = new

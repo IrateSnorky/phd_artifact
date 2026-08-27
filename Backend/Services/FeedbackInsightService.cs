@@ -56,4 +56,16 @@ public static class FeedbackInsightService
             .Where(insight => insight.Guidance is not null)
             .ToList();
     }
+
+    public static IReadOnlyList<string> BuildImprovementGuardrails(IReadOnlyList<int> responses)
+    {
+        var score = NarrativeTransportationScoring.Calculate(responses);
+
+        return Definitions
+            .Where(definition => definition.ItemIndex == 6
+                ? responses[6] >= 5
+                : score.AdjustedResponses[definition.ItemIndex] < 4)
+            .Select(definition => definition.Guidance)
+            .ToList();
+    }
 }
