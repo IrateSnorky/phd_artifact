@@ -231,7 +231,17 @@ export default function Stories() {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response));
     }
-    return response.json();
+
+    const rawText = await response.text();
+    if (!rawText.trim()) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return rawText;
+    }
   }, [getErrorMessage, getHeaders]);
 
   const fetchGenres = useCallback(async () => {

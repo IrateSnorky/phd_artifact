@@ -102,7 +102,12 @@ describe('Stories', () => {
       }
       if (options.method === 'DELETE') {
         stories = [];
-        return Promise.resolve(response({}));
+        return Promise.resolve({
+          ok: true,
+          status: 204,
+          json: vi.fn().mockRejectedValue(new SyntaxError('Unexpected end of JSON input')),
+          text: vi.fn().mockResolvedValue(''),
+        });
       }
       return Promise.resolve(response([...stories]));
     });
