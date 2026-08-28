@@ -59,13 +59,18 @@ public static class FeedbackInsightService
 
     public static IReadOnlyList<string> BuildImprovementGuardrails(IReadOnlyList<int> responses)
     {
-        var score = NarrativeTransportationScoring.Calculate(responses);
+        ArgumentNullException.ThrowIfNull(responses);
 
-        return Definitions
+        var score = NarrativeTransportationScoring.Calculate(responses);
+        var guardrails = Definitions
             .Where(definition => definition.ItemIndex == 6
                 ? responses[6] >= 5
                 : score.AdjustedResponses[definition.ItemIndex] < 4)
             .Select(definition => definition.Guidance)
             .ToList();
+
+        return guardrails.Count == 0
+            ? ["Keep the story vivid, emotionally grounded, and cleanly paced."]
+            : guardrails;
     }
 }

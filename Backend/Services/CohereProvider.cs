@@ -9,6 +9,8 @@ using System.Text.Json;
 /// </summary>
 public class CohereProvider : IAIProvider
 {
+    public string Name => "cohere";
+
     private readonly string _apiKey;
     private readonly HttpClient _httpClient;
     private const string BaseUrl = "https://api.cohere.com";

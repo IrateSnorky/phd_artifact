@@ -228,32 +228,23 @@ app.MapPost("/stories/{id}/improve-from-survey", async (int id, NarrativeTranspo
         string.IsNullOrWhiteSpace(request.StoryVersion))
         return Results.BadRequest("Transformed story, office name, and story version are required.");
 
-    IReadOnlyList<string> guardrails;
     try
     {
-        guardrails = FeedbackInsightService.BuildImprovementGuardrails(request.Responses ?? []);
+        var result = await StoryImprovementService.ImproveStoryFromSurveyAsync(story, request, httpRequest);
+        return Results.Ok(new
+        {
+            transformedStory = result.TransformedStory,
+            storyVersion = result.StoryVersion,
+            guardrails = result.Guardrails,
+        });
     }
     catch (ArgumentException ex)
     {
         return Results.BadRequest(ex.Message);
     }
-
-    if (!TryResolveProvider(httpRequest, out var provider, out var providerError))
-        return Results.BadRequest(providerError);
-
-    try
+    catch (InvalidOperationException ex)
     {
-        var improvedStory = await provider!.ImproveStoryAsync(
-            request.TransformedStory,
-            guardrails.ToList(),
-            request.OfficeName,
-            request.OfficeDescription);
-        return Results.Ok(new
-        {
-            transformedStory = improvedStory,
-            storyVersion = Guid.NewGuid().ToString("N"),
-            guardrails,
-        });
+        return Results.BadRequest(ex.Message);
     }
     catch (Exception ex)
     {
@@ -301,7 +292,7 @@ app.MapPost("/feedback-insights/{category}/knowledge", async (string category, H
     if (insight is null) return Results.NotFound("No repeated improvement pattern exists for this category.");
     var guidance = insight.Guidance!;
 
-    if (!TryResolveProvider(request, out var provider, out var providerError))
+    if (!AIProviderResolver.Resolve(request, out var provider, out var providerError))
         return Results.BadRequest(providerError);
 
     var embedding = await provider!.GetEmbeddingAsync(guidance);
@@ -330,7 +321,7 @@ app.MapPost("/stories/{id}/transform-for-office", async (int id, OfficeStoryTran
     if (string.IsNullOrWhiteSpace(sourceStory))
         return Results.BadRequest("This story does not have content to transform");
 
-    if (!TryResolveProvider(request, out var provider, out var providerError))
+    if (!AIProviderResolver.Resolve(request, out var provider, out var providerError))
         return Results.BadRequest(providerError);
 
     try
@@ -358,7 +349,7 @@ app.MapPost("/knowledge", async (KnowledgeRequest input, HttpRequest request, Ap
     if (string.IsNullOrWhiteSpace(input.Content))
         return Results.BadRequest("Content is required");
 
-    if (!TryResolveProvider(request, out var provider, out var providerError))
+    if (!AIProviderResolver.Resolve(request, out var provider, out var providerError))
         return Results.BadRequest(providerError);
 
     // Guardrails apply as whole documents (e.g. "no graphic violence"), so they are not
@@ -408,7 +399,7 @@ app.MapPut("/knowledge/{id}", async (int id, KnowledgeRequest input, HttpRequest
 
     if (contentChanged)
     {
-        if (!TryResolveProvider(request, out var provider, out var providerError))
+        if (!AIProviderResolver.Resolve(request, out var provider, out var providerError))
             return Results.BadRequest(providerError);
 
         var embedding = await provider!.GetEmbeddingAsync(trimmedContent);
@@ -441,7 +432,7 @@ app.MapPost("/stories/{id}/generate", async (int id, HttpRequest request, AppDbC
     var story = await db.Stories.FindAsync(id);
     if (story is null) return Results.NotFound();
 
-    if (!TryResolveProvider(request, out var provider, out var providerError))
+    if (!AIProviderResolver.Resolve(request, out var provider, out var providerError))
         return Results.BadRequest(providerError);
 
     var genre = story.GenreId.HasValue ? (await db.StoryGenres.FindAsync(story.GenreId))?.Name : "General";
@@ -506,34 +497,6 @@ app.MapPost("/stories/{id}/generate", async (int id, HttpRequest request, AppDbC
 
 app.Run();
 
-static bool TryResolveProvider(HttpRequest request, out IAIProvider? provider, out string error)
-{
-    var requestedProvider = request.Headers["X-AI-Provider"].FirstOrDefault()?.Trim().ToLowerInvariant();
-    requestedProvider = string.IsNullOrEmpty(requestedProvider) ? "gemini" : requestedProvider;
-
-    if (requestedProvider is not ("gemini" or "cohere"))
-    {
-        provider = null;
-        error = "Unsupported AI provider. Choose Gemini or Cohere.";
-        return false;
-    }
-
-    var environmentVariable = requestedProvider == "gemini" ? "GEMINI_API_KEY" : "COHERE_API_KEY";
-    var apiKey = Environment.GetEnvironmentVariable(environmentVariable);
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        provider = null;
-        error = $"{environmentVariable} environment variable is not set for the selected AI provider.";
-        return false;
-    }
-
-    provider = requestedProvider == "gemini"
-        ? new GeminiProvider(apiKey)
-        : new CohereProvider(apiKey);
-    error = string.Empty;
-    return true;
-}
-
 static float[] DeserializeEmbedding(string? json) =>
     string.IsNullOrEmpty(json) ? Array.Empty<float>() : System.Text.Json.JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>();
 
@@ -555,18 +518,18 @@ static double CosineSimilarity(float[] a, float[] b)
 
 record KnowledgeRequest(string Content, string? Source, bool AlwaysInclude = false, int? GenreId = null);
 
-record NarrativeTransportationSurveyRequest(
+public record NarrativeTransportationSurveyRequest(
     int[] Responses,
     string TransformedStory,
     string OfficeName,
     string OfficeDescription,
     string StoryVersion);
 
-record NarrativeTransportationImprovementRequest(
+public record NarrativeTransportationImprovementRequest(
     int[] Responses,
     string TransformedStory,
     string OfficeName,
     string OfficeDescription,
     string StoryVersion);
 
-record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);
+public record OfficeStoryTransformRequest(string OfficeName, string OfficeDescription);

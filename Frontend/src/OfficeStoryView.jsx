@@ -176,14 +176,20 @@ export default function OfficeStoryView() {
         }),
       });
       const responseText = await response.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        data = responseText;
+      let data = null;
+      if (responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = responseText;
+        }
       }
       if (!response.ok) {
-        throw new Error(data?.detail || data?.title || data?.message || data || 'Failed to transform story');
+        const detail = data && typeof data === 'object' ? data.detail || data.title || data.message : null;
+        throw new Error(detail || 'Failed to transform story');
+      }
+      if (!data || typeof data !== 'object' || !data.transformedStory) {
+        throw new Error('The story could not be transformed. Confirm the selected story still exists and restart the backend if it was recently updated.');
       }
       setTransformedStory(data.transformedStory);
       setStoryVersion(data.storyVersion);
@@ -260,17 +266,16 @@ export default function OfficeStoryView() {
         try {
           improvementData = JSON.parse(improvementText);
         } catch {
-          if (!improvementResponse.ok) {
-            throw new Error(improvementText || 'The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
-          }
-          throw new Error(improvementText);
+          improvementData = null;
         }
       }
       if (!improvementResponse.ok) {
-        const detail = improvementData?.detail || improvementData?.title || improvementData?.message;
-        throw new Error(detail || improvementText || 'The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
+        const detail = improvementData && typeof improvementData === 'object'
+          ? improvementData.detail || improvementData.title || improvementData.message
+          : null;
+        throw new Error(detail || 'The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
       }
-      if (!improvementData?.transformedStory) {
+      if (!improvementData || typeof improvementData !== 'object' || !improvementData.transformedStory) {
         throw new Error('The story could not be improved. Confirm the selected story still exists and restart the backend if it was recently updated.');
       }
       setTransformedStory(improvementData.transformedStory);

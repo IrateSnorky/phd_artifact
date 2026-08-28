@@ -5,6 +5,16 @@ namespace Backend.Tests;
 public class NarrativeTransportationScoringTests
 {
     [Fact]
+    public void Calculate_RejectsNullResponses()
+    {
+        IReadOnlyList<int>? responses = null;
+
+        var exception = Assert.Throws<ArgumentNullException>(() => NarrativeTransportationScoring.Calculate(responses!));
+
+        Assert.Equal("responses", exception.ParamName);
+    }
+
+    [Fact]
     public void Calculate_ReversesMindWanderingAndSumsAllResponses()
     {
         var result = NarrativeTransportationScoring.Calculate(Enumerable.Repeat(7, 15).ToArray());

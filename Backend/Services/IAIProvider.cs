@@ -6,6 +6,8 @@ namespace Backend.Services;
 /// </summary>
 public interface IAIProvider
 {
+    string Name { get; }
+
     /// <summary>
     /// Generates a story based on prompt, instructions, guardrails, and context.
     /// </summary>

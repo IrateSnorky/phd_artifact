@@ -51,6 +51,17 @@ public class FeedbackInsightServiceTests
     }
 
     [Fact]
+    public void BuildImprovementGuardrails_ReturnsDefaultGuidance_WhenNoLowScoresExist()
+    {
+        var responses = Enumerable.Repeat(4, 15).ToArray();
+
+        var guardrails = FeedbackInsightService.BuildImprovementGuardrails(responses);
+
+        Assert.NotEmpty(guardrails);
+        Assert.Contains(guardrails, guardrail => guardrail.Contains("vivid", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildImprovementGuardrails_RejectsInvalidResponseCount()
     {
         var exception = Assert.Throws<ArgumentException>(() =>

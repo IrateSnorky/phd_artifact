@@ -8,6 +8,8 @@ using System.Text.Json;
 /// </summary>
 public class GeminiProvider : IAIProvider
 {
+    public string Name => "gemini";
+
     private readonly string _apiKey;
     private readonly HttpClient _httpClient;
     private const string GenerationModel = "gemini-3.5-flash";

@@ -6,6 +6,8 @@ public static class NarrativeTransportationScoring
 {
     public static NarrativeTransportationScore Calculate(IReadOnlyList<int> responses)
     {
+        ArgumentNullException.ThrowIfNull(responses);
+
         if (responses.Count != 15)
             throw new ArgumentException("Exactly 15 response values are required.", nameof(responses));
 
