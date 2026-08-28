@@ -43,7 +43,31 @@ Open http://localhost:5173. The backend runs at http://localhost:5066.
 
 The transformed text is displayed only in the Office View. It is not saved over the source story, and changing the story or office setting clears the temporary transformation.
 
-Office transformations require `GEMINI_API_KEY`. See [SETUP_GEMINI.md](SETUP_GEMINI.md) for key setup and troubleshooting.
+Office transformations require an AI provider key. The app supports both Gemini and Cohere, and the selected provider is resolved from the browser header state plus the matching environment variable in the backend shell. See [docs/AI_PROVIDER_SETUP.md](docs/AI_PROVIDER_SETUP.md) for setup and troubleshooting.
+
+## AI Provider Setup
+
+The backend expects the active provider’s API key to be exported in the shell that runs `dotnet run`.
+
+```bash
+# Gemini
+export GEMINI_API_KEY="your_gemini_key"
+
+# Cohere
+export COHERE_API_KEY="your_cohere_key"
+```
+
+If the browser is configured for a provider whose key is not available, the resolver falls back to the other configured provider when possible. If neither key is set, the app returns a clear provider-missing error instead of failing with a generic JSON parsing problem.
+
+## Survey-Driven Improvement Flow
+
+The Office View survey can improve a temporary transformed story using feedback from the Narrative Transportation scale.
+
+1. Transform a story for an office setting.
+2. Answer all 15 survey questions.
+3. Submit the survey.
+4. The backend calculates a score, builds guardrails from low-scoring items, and regenerates the temporary story.
+5. The saved story is unchanged; only the temporary office-view version is replaced.
 
 ## API
 
