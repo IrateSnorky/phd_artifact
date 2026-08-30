@@ -90,6 +90,7 @@ function ProviderSelector() {
       >
         <option value="gemini">Gemini</option>
         <option value="cohere">Cohere</option>
+        <option value="claude">Claude</option>
       </select>
     </label>
   );

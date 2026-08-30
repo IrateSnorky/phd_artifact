@@ -2,23 +2,28 @@ import { createContext, useContext, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'storygen-ai-provider';
 const DEFAULT_PROVIDER = 'gemini';
+const VALID_PROVIDERS = ['gemini', 'cohere', 'claude'];
 
 const AIProviderContext = createContext(null);
 
 export function AIProviderProvider({ children }) {
   const [provider, setProvider] = useState(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved === 'cohere' || saved === 'gemini' ? saved : DEFAULT_PROVIDER;
+    return VALID_PROVIDERS.includes(saved) ? saved : DEFAULT_PROVIDER;
   });
 
   const value = useMemo(() => ({
     provider,
     setProvider: (nextProvider) => {
-      const normalized = nextProvider === 'cohere' ? 'cohere' : DEFAULT_PROVIDER;
+      const normalized = VALID_PROVIDERS.includes(nextProvider) ? nextProvider : DEFAULT_PROVIDER;
       window.localStorage.setItem(STORAGE_KEY, normalized);
       setProvider(normalized);
     },
-    providerLabel: provider === 'cohere' ? 'Cohere' : 'Gemini',
+    providerLabel: {
+      gemini: 'Gemini',
+      cohere: 'Cohere',
+      claude: 'Claude'
+    }[provider] || 'Gemini',
     getHeaders: () => ({ 'X-AI-Provider': provider }),
   }), [provider]);
 

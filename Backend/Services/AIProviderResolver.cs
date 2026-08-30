@@ -26,6 +26,7 @@ public static class AIProviderResolver
 
         var geminiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         var cohereKey = Environment.GetEnvironmentVariable("COHERE_API_KEY");
+        var claudeKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY");
 
         providerFactory ??= providerName =>
         {
@@ -35,18 +36,29 @@ public static class AIProviderResolver
             if (providerName is "cohere" && !string.IsNullOrWhiteSpace(cohereKey))
                 return new CohereProvider(cohereKey);
 
-            if (providerName is not ("gemini" or "cohere"))
+            if (providerName is "claude" && !string.IsNullOrWhiteSpace(claudeKey))
+                return new ClaudeProvider(claudeKey, cohereKey);
+
+            if (providerName is not ("gemini" or "cohere" or "claude"))
                 return !string.IsNullOrWhiteSpace(geminiKey)
                     ? new GeminiProvider(geminiKey)
                     : !string.IsNullOrWhiteSpace(cohereKey)
                         ? new CohereProvider(cohereKey)
-                        : null;
+                        : !string.IsNullOrWhiteSpace(claudeKey)
+                            ? new ClaudeProvider(claudeKey, cohereKey)
+                            : null;
 
             if (!string.IsNullOrWhiteSpace(geminiKey) && providerName == "cohere")
                 return new GeminiProvider(geminiKey);
 
             if (!string.IsNullOrWhiteSpace(cohereKey) && providerName == "gemini")
                 return new CohereProvider(cohereKey);
+
+            if (!string.IsNullOrWhiteSpace(claudeKey) && providerName == "gemini")
+                return new ClaudeProvider(claudeKey, cohereKey);
+
+            if (!string.IsNullOrWhiteSpace(claudeKey) && providerName == "cohere")
+                return new ClaudeProvider(claudeKey, cohereKey);
 
             return null;
         };
@@ -58,15 +70,19 @@ public static class AIProviderResolver
             return true;
         }
 
-        if (requestedProvider is not ("gemini" or "cohere"))
+        if (requestedProvider is not ("gemini" or "cohere" or "claude"))
         {
-            error = "Unsupported AI provider. Choose Gemini or Cohere.";
+            error = "Unsupported AI provider. Choose Gemini, Cohere, or Claude.";
             return false;
         }
 
-        error = requestedProvider == "gemini"
-            ? "GEMINI_API_KEY environment variable is not set for the selected AI provider."
-            : "COHERE_API_KEY environment variable is not set for the selected AI provider.";
+        error = requestedProvider switch
+        {
+            "gemini" => "GEMINI_API_KEY environment variable is not set for the selected AI provider.",
+            "cohere" => "COHERE_API_KEY environment variable is not set for the selected AI provider.",
+            "claude" => "CLAUDE_API_KEY environment variable is not set for the selected AI provider.",
+            _ => "No AI provider API key is configured."
+        };
         return false;
     }
 }
