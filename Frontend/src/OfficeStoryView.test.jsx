@@ -63,7 +63,7 @@ describe('OfficeStoryView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Transform story for Law firm' }));
     await screen.findByText('The office version.');
 
-    screen.getAllByRole('radio').filter((_, index) => index % 7 === 0).forEach((radio) => {
+    screen.getAllByRole('radio').filter((_, index) => index % 5 === 0).forEach((radio) => {
       fireEvent.click(radio);
     });
     fireEvent.click(screen.getByRole('button', { name: 'Submit survey' }));
@@ -110,7 +110,7 @@ describe('OfficeStoryView', () => {
     await screen.findByText('The original story.');
     fireEvent.click(screen.getByRole('button', { name: 'Transform story for Law firm' }));
     await screen.findByText('The office version.');
-    screen.getAllByRole('radio').filter((_, index) => index % 7 === 0).forEach((radio) => {
+    screen.getAllByRole('radio').filter((_, index) => index % 5 === 0).forEach((radio) => {
       fireEvent.click(radio);
     });
     fireEvent.click(screen.getByRole('button', { name: 'Submit survey' }));
@@ -152,7 +152,7 @@ describe('OfficeStoryView', () => {
     await screen.findByText('The original story.');
     fireEvent.click(screen.getByRole('button', { name: 'Transform story for Law firm' }));
     await screen.findByText('The office version.');
-    screen.getAllByRole('radio').filter((_, index) => index % 7 === 0).forEach((radio) => {
+    screen.getAllByRole('radio').filter((_, index) => index % 5 === 0).forEach((radio) => {
       fireEvent.click(radio);
     });
     fireEvent.click(screen.getByRole('button', { name: 'Submit survey' }));

@@ -164,15 +164,15 @@ public class CohereProvider : IAIProvider
         var prompt = string.Join(
             Environment.NewLine,
             "Evaluate the following story using the Narrative Transportation scale.",
-            "Score each of these statements from 1 (not at all) to 7 (very much):",
+            "Score each of these statements from 1 (not at all) to 5 (very much):",
             string.Empty,
             string.Join(Environment.NewLine, items.Select((item, index) => $"{index + 1}. {item}")),
             string.Empty,
-            "Important: For the reverse-scored item (\"I found my mind wandering while reading the narrative.\"), compute the score as 8 - response so that higher values mean greater transportation.",
+            "Important: For the reverse-scored item (\"I found my mind wandering while reading the narrative.\"), compute the score as 6 - response so that higher values mean greater transportation.",
             string.Empty,
             "Return only valid JSON in this exact shape:",
             "{ \"total\": 0, \"average\": 0.0 }",
-            "Use the total score across all items, with total between 9 and 63, and average between 1.0 and 7.0.",
+            "Use the total score across all items, with total between 15 and 75, and average between 1.0 and 5.0.",
             string.Empty,
             "Story:",
             storyText
@@ -190,7 +190,7 @@ public class CohereProvider : IAIProvider
         if (!scoreDoc.RootElement.TryGetProperty("total", out var totalElement)) return null;
 
         var total = totalElement.GetInt32();
-        return Math.Clamp(total, 9, 63);
+        return Math.Clamp(total, 15, 75);
     }
 
     private async Task<string> CallGenerationApiAsync(string prompt)

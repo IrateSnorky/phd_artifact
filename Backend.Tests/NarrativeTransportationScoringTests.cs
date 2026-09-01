@@ -17,22 +17,22 @@ public class NarrativeTransportationScoringTests
     [Fact]
     public void Calculate_ReversesMindWanderingAndSumsAllResponses()
     {
-        var result = NarrativeTransportationScoring.Calculate(Enumerable.Repeat(7, 15).ToArray());
+        var result = NarrativeTransportationScoring.Calculate(Enumerable.Repeat(5, 15).ToArray());
 
-        Assert.Equal(105 - 6, result.Total);
+        Assert.Equal(75 - 4, result.Total);
         Assert.Equal(1, result.AdjustedResponses[6]);
-        Assert.All(result.AdjustedResponses.Where((_, index) => index != 6), value => Assert.Equal(7, value));
+        Assert.All(result.AdjustedResponses.Where((_, index) => index != 6), value => Assert.Equal(5, value));
     }
 
     [Fact]
     public void Calculate_RejectsResponsesOutsideScale()
     {
         var responses = Enumerable.Repeat(1, 15).ToArray();
-        responses[0] = 8;
+        responses[0] = 6;
 
         var exception = Assert.Throws<ArgumentException>(() => NarrativeTransportationScoring.Calculate(responses));
 
-        Assert.Contains("between 1 and 7", exception.Message);
+        Assert.Contains("between 1 and 5", exception.Message);
     }
 
     [Fact]

@@ -440,7 +440,7 @@ export default function OfficeStoryView() {
               }}>
                 <h3 style={{ margin: '0 0 16px', color: '#111827' }}>Narrative Transportation Survey</h3>
                 <p style={{ margin: '0 0 20px', color: '#4b5563' }}>
-                  After reading the transformed story, rate your agreement with each statement on a scale of 1 (not at all) to 7 (very much).
+                  After reading the transformed story, rate your agreement with each statement on a scale of 1 (not at all) to 5 (very much).
                 </p>
 
                 {improving ? (
@@ -453,22 +453,22 @@ export default function OfficeStoryView() {
                     border: `1px solid ${selectedOffice.accent}`,
                   }}>
                     <p style={{ margin: 0, fontWeight: 700, color: '#111827' }}>
-                      Score: {surveyResult.total}/105
+                      Score: {surveyResult.total}/75
                     </p>
                     <p style={{ margin: '8px 0 0', color: '#374151' }}>
-                      Average: {surveyResult.average.toFixed(2)}/7
+                      Average: {surveyResult.average.toFixed(2)}/5
                     </p>
                     <h4 style={{ margin: '20px 0 8px', color: '#111827' }}>Improvement signals</h4>
                     <ul style={{ margin: '0 0 12px', paddingLeft: 20, color: '#374151' }}>
                       {improvementSignals.map(({ response, item }) => (
                         <li key={item} style={{ marginBottom: 6 }}>
-                          {response}/7: {item}
+                          {response}/5: {item}
                         </li>
                       ))}
                     </ul>
-                    {surveyResponses[6] >= 5 && (
+                    {surveyResponses[6] >= 4 && (
                       <p style={{ margin: 0, color: '#9a3412' }}>
-                        Attention drift was high ({surveyResponses[6]}/7). Consider tightening pacing,
+                        Attention drift was high ({surveyResponses[6]}/5). Consider tightening pacing,
                         removing repetition, or strengthening narrative tension.
                       </p>
                     )}
@@ -481,7 +481,7 @@ export default function OfficeStoryView() {
                         {feedbackInsights.map((insight) => (
                           <div key={insight.category} style={{ marginBottom: 12 }}>
                             <p style={{ margin: '0 0 6px', color: '#374151' }}>
-                              <strong>{insight.label}</strong> ({insight.average}/7 across {insight.evaluationCount} evaluations): {insight.guidance}
+                              <strong>{insight.label}</strong> ({insight.average}/5 across {insight.evaluationCount} evaluations): {insight.guidance}
                             </p>
                             <button
                               type="button"
@@ -506,7 +506,7 @@ export default function OfficeStoryView() {
                           {index + 1}. {item}
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8 }}>
-                          {[1, 2, 3, 4, 5, 6, 7].map((value) => (
+                          {[1, 2, 3, 4, 5].map((value) => (
                             <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: '#374151' }}>
                               <input
                                 type="radio"

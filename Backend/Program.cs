@@ -209,7 +209,7 @@ app.MapPost("/stories/{id}/narrative-transportation", async (int id, NarrativeTr
     {
         narrativeTransportationScore = score.Total,
         average = score.Total / 15.0,
-        maxScore = 105,
+        maxScore = 75,
         itemCount = 15,
         evaluationId = evaluation.NarrativeTransportationEvaluationId,
         storyVersion = evaluation.StoryVersion,

@@ -21,12 +21,12 @@ public class FeedbackInsightServiceTests
     [Fact]
     public void Build_ReturnsAttentionDriftForRepeatedHighScores()
     {
-        var evaluations = CreateEvaluations(responseValue: 6);
+        var evaluations = CreateEvaluations(responseValue: 5);
 
         var insights = FeedbackInsightService.Build(evaluations);
 
         var attentionDrift = Assert.Single(insights, insight => insight.Category == "attention-drift");
-        Assert.Equal(6, attentionDrift.Average);
+        Assert.Equal(5, attentionDrift.Average);
     }
 
     [Fact]
@@ -40,9 +40,9 @@ public class FeedbackInsightServiceTests
     [Fact]
     public void BuildImprovementGuardrails_ReturnsGuidanceForLowScoresAndAttentionDrift()
     {
-        var responses = Enumerable.Repeat(6, 15).ToArray();
+        var responses = Enumerable.Repeat(5, 15).ToArray();
         responses[0] = 2;
-        responses[6] = 6;
+        responses[6] = 5;
 
         var guardrails = FeedbackInsightService.BuildImprovementGuardrails(responses);
 
@@ -74,7 +74,7 @@ public class FeedbackInsightServiceTests
     {
         var responses = Enumerable.Repeat(responseValue, 15).ToArray();
         var adjusted = responses.ToArray();
-        adjusted[6] = 8 - responseValue;
+        adjusted[6] = 6 - responseValue;
         var responsesJson = JsonSerializer.Serialize(responses);
         var adjustedJson = JsonSerializer.Serialize(adjusted);
         return [(responsesJson, adjustedJson), (responsesJson, adjustedJson)];

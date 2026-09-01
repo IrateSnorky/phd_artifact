@@ -484,7 +484,7 @@ export default function Stories() {
                   )}
                 </td>
                 <td style={{ color: '#000000', fontWeight: 600 }}>
-                  {story.narrativeTransportationScore == null ? '—' : `${story.narrativeTransportationScore}/105`}
+                  {story.narrativeTransportationScore == null ? '—' : `${story.narrativeTransportationScore}/75`}
                 </td>
                 <td>
                   {editingId === story.storyId ? (
